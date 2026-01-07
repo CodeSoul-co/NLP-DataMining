@@ -5,10 +5,8 @@
 <h1>THETA (θ)</h1>
 
 Textual Hybrid Embedding–based Topic Analysis  
-LLM-adaptive embeddings (Zero-shot / LoRA) + Generative Topic Modeling (ETM/DETM) + Agent-based workflow for social science text mining
 
 </div>
----
 
 ## Overview
 
