@@ -432,4 +432,4 @@ A: Yes. Export standardized JSONL with at least id and text fields, and implemen
 
 ---
 ## **Contact me**
-Please contact me duanzhenke@stu.zuel.edu.cn, panjiqun@stu.zuel.edu.cn or lixiun@stu.zuel.edu.cn if you have any questions.
+Please contact me duanzhenke@stu.zuel.edu.cn, panjiqun@stu.zuel.edu.cn or lixin@stu.zuel.edu.cn if you have any questions.
