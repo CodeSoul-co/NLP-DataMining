@@ -1,7 +1,7 @@
 """
-Agent配置类 (Agent Configuration)
+Agent Configuration
 
-定义Agent的配置参数，包括模型路径、参数设置等。
+Defines Agent configuration parameters, including model paths, parameter settings, etc.
 """
 
 import os
@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 
 class AgentConfig:
     """
-    Agent配置类，定义Agent的配置参数。
+    Agent configuration class that defines Agent configuration parameters.
     """
     
     def __init__(
@@ -29,21 +29,21 @@ class AgentConfig:
         register_default_tools: bool = True
     ):
         """
-        初始化Agent配置。
+        Initialize Agent configuration.
         
         Args:
-            etm_model_path: ETM模型路径
-            vocab_path: 词汇表路径
-            embedding_model_path: Qwen嵌入模型路径
-            embedding_dim: 嵌入维度
-            device: 设备 ('cuda', 'cpu', 或 None 表示自动选择)
-            max_history_length: 最大对话历史长度
-            max_topic_history_length: 最大主题历史长度
-            use_faiss: 是否使用FAISS进行向量检索
-            llm_model_name: 大语言模型名称
-            llm_api_key: 大语言模型API密钥
-            llm_api_base: 大语言模型API基础URL
-            register_default_tools: 是否注册默认工具
+            etm_model_path: ETM model path
+            vocab_path: Vocabulary path
+            embedding_model_path: Qwen embedding model path
+            embedding_dim: Embedding dimension
+            device: Device ('cuda', 'cpu', or None for auto-selection)
+            max_history_length: Maximum conversation history length
+            max_topic_history_length: Maximum topic history length
+            use_faiss: Whether to use FAISS for vector retrieval
+            llm_model_name: Large language model name
+            llm_api_key: Large language model API key
+            llm_api_base: Large language model API base URL
+            register_default_tools: Whether to register default tools
         """
         self.etm_model_path = etm_model_path
         self.vocab_path = vocab_path
@@ -60,10 +60,10 @@ class AgentConfig:
     
     def to_dict(self) -> Dict[str, Any]:
         """
-        将配置转换为字典。
+        Convert configuration to dictionary.
         
         Returns:
-            配置字典
+            Configuration dictionary
         """
         return {
             "etm_model_path": self.etm_model_path,
@@ -83,23 +83,23 @@ class AgentConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'AgentConfig':
         """
-        从字典创建配置。
+        Create configuration from dictionary.
         
         Args:
-            config_dict: 配置字典
+            config_dict: Configuration dictionary
             
         Returns:
-            配置实例
+            Configuration instance
         """
         return cls(**config_dict)
     
     @classmethod
     def from_env(cls) -> 'AgentConfig':
         """
-        从环境变量创建配置。
+        Create configuration from environment variables.
         
         Returns:
-            配置实例
+            Configuration instance
         """
         return cls(
             etm_model_path=os.environ.get("ETM_MODEL_PATH", ""),

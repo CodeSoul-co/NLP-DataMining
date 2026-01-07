@@ -1,8 +1,8 @@
 """
-主题感知Agent (Topic-Aware Agent)
+Topic-Aware Agent
 
-整合主题感知模块、认知控制模块、知识表示模块和记忆系统，
-实现基于ETM的智能Agent。
+Integrates topic-aware module, cognitive control module, knowledge representation module,
+and memory system to implement an intelligent Agent based on ETM.
 """
 
 import os
@@ -13,10 +13,10 @@ import torch
 from typing import List, Dict, Tuple, Optional, Union, Any
 from pathlib import Path
 
-# 添加项目根目录到路径
+# Add project root directory to path
 sys.path.append(str(Path(__file__).parents[2]))
 
-# 导入其他模块
+# Import other modules
 from agent.modules.topic_aware import TopicAwareModule
 from agent.modules.cognitive_controller import CognitiveController
 from agent.modules.knowledge_module import KnowledgeModule
@@ -31,13 +31,13 @@ from embedding.embedder import QwenEmbedder
 
 class TopicAwareAgent:
     """
-    主题感知Agent，整合ETM模型与大语言模型，实现智能交互。
+    Topic-Aware Agent that integrates ETM model with large language models for intelligent interaction.
     
-    架构：
-    1. 主题感知模块：将文本映射到主题空间
-    2. 认知控制模块：整合主题信息与大语言模型
-    3. 知识表示模块：存储和检索知识
-    4. 记忆系统：管理对话历史和主题演化
+    Architecture:
+    1. Topic-aware module: Maps text to topic space
+    2. Cognitive control module: Integrates topic information with large language models
+    3. Knowledge representation module: Stores and retrieves knowledge
+    4. Memory system: Manages conversation history and topic evolution
     """
     
     def __init__(
@@ -46,11 +46,11 @@ class TopicAwareAgent:
         dev_mode: bool = False
     ):
         """
-        初始化主题感知Agent。
+        Initialize Topic-Aware Agent.
         
         Args:
-            config: Agent配置
-            dev_mode: 是否开启开发模式（打印调试信息）
+            config: Agent configuration
+            dev_mode: Whether to enable development mode (print debug information)
         """
         self.config = config
         self.dev_mode = dev_mode
@@ -58,7 +58,7 @@ class TopicAwareAgent:
         if self.dev_mode:
             print(f"[TopicAwareAgent] Initializing with config: {config}")
         
-        # 设置设备
+        # Set device
         if config.device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
@@ -67,7 +67,7 @@ class TopicAwareAgent:
         if self.dev_mode:
             print(f"[TopicAwareAgent] Using device: {self.device}")
         
-        # 初始化组件
+        # Initialize components
         self.etm = self._load_etm_model()
         self.embedder = self._init_embedder()
         self.topic_module = self._init_topic_module()
@@ -81,19 +81,19 @@ class TopicAwareAgent:
             print(f"[TopicAwareAgent] Initialized successfully")
     
     def _load_etm_model(self) -> ETM:
-        """加载ETM模型"""
+        """Load ETM model"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Loading ETM model from {self.config.etm_model_path}")
             
             etm = ETM.load_model(self.config.etm_model_path, self.device)
-            etm.eval()  # 设置为评估模式
+            etm.eval()  # Set to evaluation mode
             return etm
         except Exception as e:
             raise RuntimeError(f"Failed to load ETM model: {e}")
     
     def _init_embedder(self) -> QwenEmbedder:
-        """初始化Qwen嵌入模型"""
+        """Initialize Qwen embedding model"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Initializing embedder with model: {self.config.embedding_model_path}")
@@ -106,7 +106,7 @@ class TopicAwareAgent:
             raise RuntimeError(f"Failed to initialize embedder: {e}")
     
     def _init_topic_module(self) -> TopicAwareModule:
-        """初始化主题感知模块"""
+        """Initialize topic-aware module"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Initializing topic module")
@@ -122,7 +122,7 @@ class TopicAwareAgent:
             raise RuntimeError(f"Failed to initialize topic module: {e}")
     
     def _init_memory_system(self) -> MemorySystem:
-        """初始化记忆系统"""
+        """Initialize memory system"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Initializing memory system")
@@ -136,7 +136,7 @@ class TopicAwareAgent:
             raise RuntimeError(f"Failed to initialize memory system: {e}")
     
     def _init_knowledge_module(self) -> KnowledgeModule:
-        """初始化知识表示模块"""
+        """Initialize knowledge representation module"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Initializing knowledge module")
@@ -152,7 +152,7 @@ class TopicAwareAgent:
             raise RuntimeError(f"Failed to initialize knowledge module: {e}")
     
     def _init_llm_client(self) -> LLMClient:
-        """初始化大语言模型客户端"""
+        """Initialize large language model client"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Initializing LLM client")
@@ -167,14 +167,14 @@ class TopicAwareAgent:
             raise RuntimeError(f"Failed to initialize LLM client: {e}")
     
     def _init_tool_registry(self) -> ToolRegistry:
-        """初始化工具注册表"""
+        """Initialize tool registry"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Initializing tool registry")
             
             registry = ToolRegistry()
             
-            # 注册默认工具
+            # Register default tools
             if self.config.register_default_tools:
                 registry.register_default_tools()
             
@@ -183,7 +183,7 @@ class TopicAwareAgent:
             raise RuntimeError(f"Failed to initialize tool registry: {e}")
     
     def _init_cognitive_controller(self) -> CognitiveController:
-        """初始化认知控制模块"""
+        """Initialize cognitive control module"""
         try:
             if self.dev_mode:
                 print(f"[TopicAwareAgent] Initializing cognitive controller")
@@ -206,16 +206,16 @@ class TopicAwareAgent:
         use_topic_enhancement: bool = True
     ) -> Dict[str, Any]:
         """
-        处理用户输入，生成响应。
+        Process user input and generate response.
         
         Args:
-            user_input: 用户输入文本
-            session_id: 会话ID
-            use_tools: 是否使用工具
-            use_topic_enhancement: 是否使用主题增强
+            user_input: User input text
+            session_id: Session ID
+            use_tools: Whether to use tools
+            use_topic_enhancement: Whether to use topic enhancement
             
         Returns:
-            包含响应和元数据的字典
+            Dictionary containing response and metadata
         """
         return self.cognitive_controller.process_input(
             user_input=user_input,
@@ -231,15 +231,15 @@ class TopicAwareAgent:
         topic_dist: Optional[np.ndarray] = None
     ) -> int:
         """
-        添加文档到知识库。
+        Add document to knowledge base.
         
         Args:
-            document: 文档内容
-            embedding: 文档嵌入向量（可选）
-            topic_dist: 文档主题分布（可选）
+            document: Document content
+            embedding: Document embedding vector (optional)
+            topic_dist: Document topic distribution (optional)
             
         Returns:
-            文档ID
+            Document ID
         """
         return self.knowledge_module.add_document(document, embedding, topic_dist)
     
@@ -250,15 +250,15 @@ class TopicAwareAgent:
         topic_dists: Optional[List[np.ndarray]] = None
     ) -> List[int]:
         """
-        批量添加文档到知识库。
+        Batch add documents to knowledge base.
         
         Args:
-            documents: 文档列表
-            embeddings: 嵌入向量列表（可选）
-            topic_dists: 主题分布列表（可选）
+            documents: List of documents
+            embeddings: List of embedding vectors (optional)
+            topic_dists: List of topic distributions (optional)
             
         Returns:
-            文档ID列表
+            List of document IDs
         """
         return self.knowledge_module.add_documents(documents, embeddings, topic_dists)
     
@@ -269,15 +269,15 @@ class TopicAwareAgent:
         use_hybrid: bool = True
     ) -> List[Tuple[int, float, Dict[str, Any]]]:
         """
-        查询知识库。
+        Query knowledge base.
         
         Args:
-            query_text: 查询文本
-            top_k: 返回的文档数量
-            use_hybrid: 是否使用混合查询
+            query_text: Query text
+            top_k: Number of documents to return
+            use_hybrid: Whether to use hybrid query
             
         Returns:
-            文档ID、相似度和文档内容的列表
+            List of document ID, similarity, and document content
         """
         if use_hybrid:
             return self.knowledge_module.hybrid_query(query_text, top_k=top_k)
@@ -289,13 +289,13 @@ class TopicAwareAgent:
         text: str
     ) -> np.ndarray:
         """
-        获取文本的主题分布。
+        Get topic distribution for text.
         
         Args:
-            text: 输入文本
+            text: Input text
             
         Returns:
-            主题分布向量
+            Topic distribution vector
         """
         return self.topic_module.get_topic_distribution(text)
     
@@ -305,14 +305,14 @@ class TopicAwareAgent:
         top_k: int = 3
     ) -> List[Tuple[int, float]]:
         """
-        获取主导主题。
+        Get dominant topics.
         
         Args:
-            topic_dist: 主题分布向量
-            top_k: 返回的主题数量
+            topic_dist: Topic distribution vector
+            top_k: Number of topics to return
             
         Returns:
-            主题索引和权重的列表
+            List of topic index and weight
         """
         return self.topic_module.get_dominant_topics(topic_dist, top_k)
     
@@ -322,14 +322,14 @@ class TopicAwareAgent:
         top_k: int = 10
     ) -> List[Tuple[str, float]]:
         """
-        获取主题的关键词。
+        Get keywords for a topic.
         
         Args:
-            topic_idx: 主题索引
-            top_k: 返回的关键词数量
+            topic_idx: Topic index
+            top_k: Number of keywords to return
             
         Returns:
-            关键词和权重的列表
+            List of keyword and weight
         """
         return self.topic_module.get_topic_words(topic_idx, top_k)
     
@@ -340,12 +340,12 @@ class TopicAwareAgent:
         description: str
     ) -> None:
         """
-        注册工具。
+        Register a tool.
         
         Args:
-            name: 工具名称
-            func: 工具函数
-            description: 工具描述
+            name: Tool name
+            func: Tool function
+            description: Tool description
         """
         self.tool_registry.register_tool(name, func, description)
     
@@ -356,27 +356,27 @@ class TopicAwareAgent:
         save_memory: bool = True
     ) -> None:
         """
-        保存Agent状态到文件。
+        Save Agent state to file.
         
         Args:
-            path: 保存路径
-            save_knowledge: 是否保存知识库
-            save_memory: 是否保存记忆系统
+            path: Save path
+            save_knowledge: Whether to save knowledge base
+            save_memory: Whether to save memory system
         """
-        # 创建目录
+        # Create directory
         os.makedirs(path, exist_ok=True)
         
-        # 保存配置
+        # Save configuration
         config_path = os.path.join(path, "config.json")
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(self.config.to_dict(), f, ensure_ascii=False, indent=2)
         
-        # 保存知识库
+        # Save knowledge base
         if save_knowledge:
             knowledge_path = os.path.join(path, "knowledge.json")
             self.knowledge_module.save(knowledge_path)
         
-        # 保存记忆系统
+        # Save memory system
         if save_memory:
             memory_path = os.path.join(path, "memory.json")
             self.memory.save(memory_path)
@@ -388,26 +388,26 @@ class TopicAwareAgent:
         dev_mode: bool = False
     ) -> 'TopicAwareAgent':
         """
-        从文件加载Agent状态。
+        Load Agent state from file.
         
         Args:
-            path: 加载路径
-            dev_mode: 是否开启开发模式
+            path: Load path
+            dev_mode: Whether to enable development mode
             
         Returns:
-            Agent实例
+            Agent instance
         """
-        # 加载配置
+        # Load configuration
         config_path = os.path.join(path, "config.json")
         with open(config_path, 'r', encoding='utf-8') as f:
             config_dict = json.load(f)
         
         config = AgentConfig.from_dict(config_dict)
         
-        # 创建实例
+        # Create instance
         instance = cls(config, dev_mode)
         
-        # 加载知识库
+        # Load knowledge base
         knowledge_path = os.path.join(path, "knowledge.json")
         if os.path.exists(knowledge_path):
             instance.knowledge_module = KnowledgeModule.load(
@@ -418,7 +418,7 @@ class TopicAwareAgent:
                 dev_mode=dev_mode
             )
         
-        # 加载记忆系统
+        # Load memory system
         memory_path = os.path.join(path, "memory.json")
         if os.path.exists(memory_path):
             instance.memory = MemorySystem.load(
@@ -426,7 +426,7 @@ class TopicAwareAgent:
                 dev_mode=dev_mode
             )
             
-            # 重新初始化认知控制模块
+            # Re-initialize cognitive control module
             instance.cognitive_controller = CognitiveController(
                 topic_module=instance.topic_module,
                 memory_system=instance.memory,
@@ -438,32 +438,32 @@ class TopicAwareAgent:
         return instance
 
 
-# 测试代码
+# Test code
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="测试主题感知Agent")
-    parser.add_argument("--etm_model", type=str, required=True, help="ETM模型路径")
-    parser.add_argument("--vocab", type=str, required=True, help="词汇表路径")
-    parser.add_argument("--input", type=str, required=True, help="测试输入")
-    parser.add_argument("--dev_mode", action="store_true", help="开发模式")
+    parser = argparse.ArgumentParser(description="Test Topic-Aware Agent")
+    parser.add_argument("--etm_model", type=str, required=True, help="ETM model path")
+    parser.add_argument("--vocab", type=str, required=True, help="Vocabulary path")
+    parser.add_argument("--input", type=str, required=True, help="Test input")
+    parser.add_argument("--dev_mode", action="store_true", help="Development mode")
     
     args = parser.parse_args()
     
-    # 创建配置
+    # Create configuration
     from agent.utils.config import AgentConfig
     
     config = AgentConfig(
         etm_model_path=args.etm_model,
         vocab_path=args.vocab,
         embedding_model_path="/root/autodl-tmp/qwen3_embedding_0.6B",
-        llm_model_name="gpt-3.5-turbo"  # 示例，实际使用时需要替换
+        llm_model_name="gpt-3.5-turbo"  # Example, replace with actual model in production
     )
     
-    # 初始化Agent
+    # Initialize Agent
     agent = TopicAwareAgent(config, dev_mode=args.dev_mode)
     
-    # 处理输入
+    # Process input
     session_id = "test_session"
     result = agent.process(args.input, session_id)
     

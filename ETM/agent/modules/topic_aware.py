@@ -1,8 +1,8 @@
 """
-主题感知模块 (Topic-Aware Module)
+Topic-Aware Module
 
-利用ETM的主题建模能力，实现主题识别、追踪和扩展功能。
-该模块是Agent的核心组件，负责将用户输入映射到主题空间。
+Leverages ETM's topic modeling capabilities to implement topic identification, tracking, and expansion.
+This module is a core component of the Agent, responsible for mapping user input to topic space.
 """
 
 import os
@@ -13,7 +13,7 @@ import torch
 from typing import List, Dict, Tuple, Optional, Union, Any
 from pathlib import Path
 
-# 添加项目根目录到路径
+# Add project root directory to path
 sys.path.append(str(Path(__file__).parents[2]))
 
 from engine_c.etm import ETM
@@ -22,13 +22,13 @@ from embedding.embedder import QwenEmbedder
 
 class TopicAwareModule:
     """
-    主题感知模块，利用ETM模型将文本映射到主题空间。
+    Topic-aware module that uses ETM model to map text to topic space.
     
-    功能：
-    1. 主题识别：将用户输入映射到主题空间(theta)
-    2. 主题追踪：跟踪对话主题变化
-    3. 主题扩展：基于主题相似性扩展相关知识
-    4. 主题过滤：根据主题相关性过滤信息
+    Features:
+    1. Topic identification: Map user input to topic space (theta)
+    2. Topic tracking: Track conversation topic changes
+    3. Topic expansion: Expand related knowledge based on topic similarity
+    4. Topic filtering: Filter information based on topic relevance
     """
     
     def __init__(
@@ -37,24 +37,24 @@ class TopicAwareModule:
         vocab_path: str,
         embedding_model_path: str = "/root/autodl-tmp/qwen3_embedding_0.6B",
         device: str = None,
-        threshold: float = 0.1,  # 主题显著性阈值
+        threshold: float = 0.1,  # Topic significance threshold
         dev_mode: bool = False
     ):
         """
-        初始化主题感知模块。
+        Initialize topic-aware module.
         
         Args:
-            etm_model_path: ETM模型路径
-            vocab_path: 词汇表路径
-            embedding_model_path: Qwen嵌入模型路径
-            device: 设备 ('cuda', 'cpu', 或 None 表示自动选择)
-            threshold: 主题显著性阈值
-            dev_mode: 是否开启开发模式（打印调试信息）
+            etm_model_path: ETM model path
+            vocab_path: Vocabulary path
+            embedding_model_path: Qwen embedding model path
+            device: Device ('cuda', 'cpu', or None for auto-selection)
+            threshold: Topic significance threshold
+            dev_mode: Whether to enable development mode (print debug information)
         """
         self.dev_mode = dev_mode
         self.threshold = threshold
         
-        # 设置设备
+        # Set device
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
@@ -64,13 +64,13 @@ class TopicAwareModule:
             print(f"[TopicAwareModule] Using device: {self.device}")
             print(f"[TopicAwareModule] Loading ETM model from {etm_model_path}")
         
-        # 加载ETM模型
+        # Load ETM model
         self.etm = self._load_etm_model(etm_model_path)
         
-        # 加载词汇表
+        # Load vocabulary
         self.vocab = self._load_vocab(vocab_path)
         
-        # 初始化Qwen嵌入模型
+        # Initialize Qwen embedding model
         self.embedder = self._init_embedder(embedding_model_path)
         
         if self.dev_mode:
@@ -79,28 +79,28 @@ class TopicAwareModule:
             print(f"[TopicAwareModule] Number of topics: {self.etm.num_topics}")
     
     def _load_etm_model(self, model_path: str) -> ETM:
-        """加载ETM模型"""
+        """Load ETM model"""
         try:
             etm = ETM.load_model(model_path, self.device)
-            etm.eval()  # 设置为评估模式
+            etm.eval()  # Set to evaluation mode
             return etm
         except Exception as e:
             raise RuntimeError(f"Failed to load ETM model: {e}")
     
     def _load_vocab(self, vocab_path: str) -> List[str]:
-        """加载词汇表"""
+        """Load vocabulary"""
         try:
             if vocab_path.endswith('_list.json'):
-                # 直接列表格式
+                # Direct list format
                 with open(vocab_path, 'r', encoding='utf-8') as f:
                     vocab_list = json.load(f)
                 return vocab_list
             else:
-                # word2idx格式
+                # word2idx format
                 with open(vocab_path, 'r', encoding='utf-8') as f:
                     word2idx = json.load(f)
                 
-                # 转换为有序列表
+                # Convert to ordered list
                 vocab_size = len(word2idx)
                 vocab_list = [''] * vocab_size
                 for word, idx in word2idx.items():
@@ -111,10 +111,10 @@ class TopicAwareModule:
             raise RuntimeError(f"Failed to load vocabulary: {e}")
     
     def _init_embedder(self, model_path: str) -> QwenEmbedder:
-        """初始化Qwen嵌入模型"""
+        """Initialize Qwen embedding model"""
         try:
-            # 这里假设QwenEmbedder已经实现
-            # 如果没有，可以使用transformers库直接实现
+            # Assuming QwenEmbedder is already implemented
+            # If not, can be implemented directly using transformers library
             return QwenEmbedder(
                 model_path=model_path,
                 device=self.device
@@ -128,26 +128,26 @@ class TopicAwareModule:
         normalize: bool = True
     ) -> np.ndarray:
         """
-        获取文本的主题分布。
+        Get topic distribution for text.
         
         Args:
-            text: 输入文本
-            normalize: 是否归一化主题分布
+            text: Input text
+            normalize: Whether to normalize topic distribution
             
         Returns:
-            主题分布向量 (num_topics,)
+            Topic distribution vector (num_topics,)
         """
-        # 获取文本的Qwen嵌入
+        # Get Qwen embedding for text
         embedding = self.embedder.embed_text(text)
         
-        # 转换为张量并添加批次维度
+        # Convert to tensor and add batch dimension
         embedding_tensor = torch.tensor(embedding, dtype=torch.float32).unsqueeze(0).to(self.device)
         
-        # 使用ETM编码器获取主题分布
+        # Use ETM encoder to get topic distribution
         with torch.no_grad():
             theta = self.etm.get_theta(embedding_tensor)
         
-        # 转换为numpy数组
+        # Convert to numpy array
         theta_np = theta.squeeze().cpu().numpy()
         
         return theta_np
@@ -158,19 +158,19 @@ class TopicAwareModule:
         top_k: int = 3
     ) -> List[Tuple[int, float]]:
         """
-        获取主导主题。
+        Get dominant topics.
         
         Args:
-            topic_dist: 主题分布向量
-            top_k: 返回的主题数量
+            topic_dist: Topic distribution vector
+            top_k: Number of topics to return
             
         Returns:
-            主题索引和权重的列表 [(topic_idx, weight), ...]
+            List of topic index and weight [(topic_idx, weight), ...]
         """
-        # 获取前k个主题
+        # Get top k topics
         top_indices = np.argsort(-topic_dist)[:top_k]
         
-        # 过滤掉权重低于阈值的主题
+        # Filter out topics with weight below threshold
         dominant_topics = [
             (idx, topic_dist[idx]) 
             for idx in top_indices 
@@ -185,19 +185,19 @@ class TopicAwareModule:
         top_k: int = 10
     ) -> List[Tuple[str, float]]:
         """
-        获取主题的关键词。
+        Get keywords for a topic.
         
         Args:
-            topic_idx: 主题索引
-            top_k: 返回的关键词数量
+            topic_idx: Topic index
+            top_k: Number of keywords to return
             
         Returns:
-            关键词和权重的列表 [(word, weight), ...]
+            List of keyword and weight [(word, weight), ...]
         """
-        # 使用ETM获取主题词
+        # Use ETM to get topic words
         topic_words = self.etm.get_topic_words(top_k=top_k, vocab=self.vocab)
         
-        # 返回指定主题的词
+        # Return words for specified topic
         return topic_words[topic_idx][1]
     
     def get_topic_similarity(
@@ -206,21 +206,21 @@ class TopicAwareModule:
         topic_dist2: np.ndarray
     ) -> float:
         """
-        计算两个主题分布的相似度。
+        Calculate similarity between two topic distributions.
         
         Args:
-            topic_dist1: 第一个主题分布
-            topic_dist2: 第二个主题分布
+            topic_dist1: First topic distribution
+            topic_dist2: Second topic distribution
             
         Returns:
-            余弦相似度 (0-1)
+            Cosine similarity (0-1)
         """
-        # 计算余弦相似度
+        # Calculate cosine similarity
         dot_product = np.dot(topic_dist1, topic_dist2)
         norm1 = np.linalg.norm(topic_dist1)
         norm2 = np.linalg.norm(topic_dist2)
         
-        # 避免除零
+        # Avoid division by zero
         if norm1 * norm2 == 0:
             return 0.0
         
@@ -233,15 +233,15 @@ class TopicAwareModule:
         threshold: float = 0.7
     ) -> bool:
         """
-        检测主题是否发生显著变化。
+        Detect whether topic has changed significantly.
         
         Args:
-            prev_topic_dist: 前一个主题分布
-            curr_topic_dist: 当前主题分布
-            threshold: 相似度阈值，低于此值视为主题变化
+            prev_topic_dist: Previous topic distribution
+            curr_topic_dist: Current topic distribution
+            threshold: Similarity threshold, below which is considered topic change
             
         Returns:
-            是否发生主题变化
+            Whether topic has changed
         """
         similarity = self.get_topic_similarity(prev_topic_dist, curr_topic_dist)
         return similarity < threshold
@@ -252,14 +252,14 @@ class TopicAwareModule:
         words_per_topic: int = 5
     ) -> Dict[str, Any]:
         """
-        获取主题上下文信息，用于增强提示。
+        Get topic context information for prompt enhancement.
         
         Args:
-            topic_indices: 主题索引列表
-            words_per_topic: 每个主题返回的关键词数量
+            topic_indices: List of topic indices
+            words_per_topic: Number of keywords to return per topic
             
         Returns:
-            主题上下文信息
+            Topic context information
         """
         context = {
             "topics": []
@@ -284,69 +284,69 @@ class TopicAwareModule:
         words_per_topic: int = 5
     ) -> str:
         """
-        使用主题信息增强提示。
+        Enhance prompt using topic information.
         
         Args:
-            prompt: 原始提示
-            topic_dist: 主题分布
-            top_k_topics: 使用的主题数量
-            words_per_topic: 每个主题的关键词数量
+            prompt: Original prompt
+            topic_dist: Topic distribution
+            top_k_topics: Number of topics to use
+            words_per_topic: Number of keywords per topic
             
         Returns:
-            增强后的提示
+            Enhanced prompt
         """
-        # 获取主导主题
+        # Get dominant topics
         dominant_topics = self.get_dominant_topics(topic_dist, top_k=top_k_topics)
         
         if not dominant_topics:
             return prompt
         
-        # 构建主题上下文
-        topic_context = "相关主题上下文:\n"
+        # Build topic context
+        topic_context = "Relevant topic context:\n"
         
         for topic_idx, weight in dominant_topics:
             topic_words = self.get_topic_words(topic_idx, top_k=words_per_topic)
             words_str = ", ".join([word for word, _ in topic_words])
-            topic_context += f"- 主题 {topic_idx} (权重: {weight:.2f}): {words_str}\n"
+            topic_context += f"- Topic {topic_idx} (weight: {weight:.2f}): {words_str}\n"
         
-        # 增强提示
+        # Enhance prompt
         enhanced_prompt = f"{prompt}\n\n{topic_context}"
         
         return enhanced_prompt
 
 
-# 测试代码
+# Test code
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="测试主题感知模块")
-    parser.add_argument("--etm_model", type=str, required=True, help="ETM模型路径")
-    parser.add_argument("--vocab", type=str, required=True, help="词汇表路径")
-    parser.add_argument("--text", type=str, required=True, help="测试文本")
-    parser.add_argument("--dev_mode", action="store_true", help="开发模式")
+    parser = argparse.ArgumentParser(description="Test topic-aware module")
+    parser.add_argument("--etm_model", type=str, required=True, help="ETM model path")
+    parser.add_argument("--vocab", type=str, required=True, help="Vocabulary path")
+    parser.add_argument("--text", type=str, required=True, help="Test text")
+    parser.add_argument("--dev_mode", action="store_true", help="Development mode")
     
     args = parser.parse_args()
     
-    # 初始化模块
+    # Initialize module
     topic_module = TopicAwareModule(
         etm_model_path=args.etm_model,
         vocab_path=args.vocab,
         dev_mode=args.dev_mode
     )
     
-    # 获取主题分布
+    # Get topic distribution
     topic_dist = topic_module.get_topic_distribution(args.text)
     print(f"Topic distribution: {topic_dist}")
     
-    # 获取主导主题
+    # Get dominant topics
     dominant_topics = topic_module.get_dominant_topics(topic_dist)
     print(f"Dominant topics: {dominant_topics}")
     
-    # 获取主题词
+    # Get topic words
     for topic_idx, weight in dominant_topics:
         topic_words = topic_module.get_topic_words(topic_idx)
         print(f"Topic {topic_idx} (weight: {weight:.2f}): {topic_words}")
     
-    # 增强提示
+    # Enhance prompt
     enhanced_prompt = topic_module.enrich_prompt(args.text, topic_dist)
     print(f"\nEnhanced prompt:\n{enhanced_prompt}")

@@ -1,7 +1,7 @@
 """
-大语言模型客户端 (LLM Client)
+LLM Client
 
-提供与大语言模型交互的接口，支持不同的模型和API。
+Provides interface for interacting with large language models, supporting different models and APIs.
 """
 
 import os
@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional, Union
 
 class LLMClient:
     """
-    大语言模型客户端，提供与大语言模型交互的接口。
+    Large language model client that provides interface for interacting with LLMs.
     """
     
     def __init__(
@@ -25,15 +25,15 @@ class LLMClient:
         dev_mode: bool = False
     ):
         """
-        初始化大语言模型客户端。
+        Initialize large language model client.
         
         Args:
-            model_name: 模型名称
-            api_key: API密钥
-            api_base: API基础URL
-            temperature: 温度参数
-            max_tokens: 最大生成令牌数
-            dev_mode: 是否开启开发模式（打印调试信息）
+            model_name: Model name
+            api_key: API key
+            api_base: API base URL
+            temperature: Temperature parameter
+            max_tokens: Maximum number of tokens to generate
+            dev_mode: Whether to enable development mode (print debug information)
         """
         self.model_name = model_name
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -42,7 +42,7 @@ class LLMClient:
         self.max_tokens = max_tokens
         self.dev_mode = dev_mode
         
-        # 检查API密钥
+        # Check API key
         if not self.api_key and not self.dev_mode:
             print("[WARNING] No API key provided. Using mock responses.")
         
@@ -56,24 +56,24 @@ class LLMClient:
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
-        生成文本响应。
+        Generate text response.
         
         Args:
-            prompt: 提示文本
-            context: 上下文信息
-            tools: 可用工具列表
+            prompt: Prompt text
+            context: Context information
+            tools: List of available tools
             
         Returns:
-            包含响应内容的字典
+            Dictionary containing response content
         """
         if not self.api_key:
             return self._mock_response(prompt, context, tools)
         
         try:
-            # 构建消息
+            # Build messages
             messages = self._build_messages(prompt, context)
             
-            # 构建请求
+            # Build request
             request_data = {
                 "model": self.model_name,
                 "messages": messages,
@@ -81,7 +81,7 @@ class LLMClient:
                 "max_tokens": self.max_tokens
             }
             
-            # 添加工具（如果提供）
+            # Add tools (if provided)
             if tools:
                 request_data["tools"] = [
                     {
@@ -113,15 +113,15 @@ class LLMClient:
                 json=request_data
             )
             
-            # 解析响应
+            # Parse response
             if response.status_code == 200:
                 response_data = response.json()
                 
-                # 提取内容
+                # Extract content
                 message = response_data["choices"][0]["message"]
                 content = message.get("content", "")
                 
-                # 提取工具调用
+                # Extract tool calls
                 tool_calls = message.get("tool_calls", [])
                 
                 result = {
@@ -165,24 +165,24 @@ class LLMClient:
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        使用工具结果生成最终响应。
+        Generate final response using tool results.
         
         Args:
-            original_response: 原始响应
-            tool_results: 工具调用结果
-            context: 上下文信息
+            original_response: Original response
+            tool_results: Tool call results
+            context: Context information
             
         Returns:
-            最终响应
+            Final response
         """
         if not self.api_key:
             return self._mock_tool_response(original_response, tool_results)
         
         try:
-            # 构建消息
+            # Build messages
             messages = self._build_messages("", context)
             
-            # 添加原始响应
+            # Add original response
             messages.append({
                 "role": "assistant",
                 "content": original_response.get("content", ""),
@@ -199,7 +199,7 @@ class LLMClient:
                 ]
             })
             
-            # 添加工具结果
+            # Add tool results
             for i, result in enumerate(tool_results):
                 messages.append({
                     "role": "tool",
@@ -208,7 +208,7 @@ class LLMClient:
                     "content": json.dumps(result["result"])
                 })
             
-            # 构建请求
+            # Build request
             request_data = {
                 "model": self.model_name,
                 "messages": messages,
@@ -216,7 +216,7 @@ class LLMClient:
                 "max_tokens": self.max_tokens
             }
             
-            # 发送请求
+            # Send request
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}"
@@ -230,11 +230,11 @@ class LLMClient:
                 json=request_data
             )
             
-            # 解析响应
+            # Parse response
             if response.status_code == 200:
                 response_data = response.json()
                 
-                # 提取内容
+                # Extract content
                 message = response_data["choices"][0]["message"]
                 content = message.get("content", "")
                 
@@ -247,7 +247,7 @@ class LLMClient:
                     print(f"[LLMClient] {error_message}")
                 
                 return {
-                    "content": f"抱歉，我遇到了一个问题：{error_message}",
+                    "content": f"Sorry, I encountered a problem: {error_message}",
                     "error": error_message
                 }
         
@@ -257,7 +257,7 @@ class LLMClient:
                 print(f"[LLMClient] {error_message}")
             
             return {
-                "content": "抱歉，我遇到了一个问题，无法生成响应。",
+                "content": "Sorry, I encountered a problem and cannot generate a response.",
                 "error": error_message
             }
     
@@ -267,38 +267,38 @@ class LLMClient:
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        生成计划。
+        Generate plan.
         
         Args:
-            planning_prompt: 规划提示
-            context: 上下文信息
+            planning_prompt: Planning prompt
+            context: Context information
             
         Returns:
-            计划
+            Plan
         """
         if not self.api_key:
             return self._mock_plan(planning_prompt)
         
         try:
-            # 构建消息
+            # Build messages
             messages = self._build_messages(planning_prompt, context)
             
-            # 添加系统提示
+            # Add system prompt
             messages.insert(0, {
                 "role": "system",
-                "content": "你是一个专业的规划助手，请根据用户的请求制定详细的响应计划。"
+                "content": "You are a professional planning assistant. Please create a detailed response plan based on the user's request."
             })
             
-            # 构建请求
+            # Build request
             request_data = {
                 "model": self.model_name,
                 "messages": messages,
-                "temperature": 0.5,  # 降低温度，使规划更确定
+                "temperature": 0.5,  # Lower temperature for more deterministic planning
                 "max_tokens": self.max_tokens,
-                "response_format": {"type": "json_object"}  # 请求JSON格式的响应
+                "response_format": {"type": "json_object"}  # Request JSON format response
             }
             
-            # 发送请求
+            # Send request
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}"
@@ -312,14 +312,14 @@ class LLMClient:
                 json=request_data
             )
             
-            # 解析响应
+            # Parse response
             if response.status_code == 200:
                 response_data = response.json()
                 
-                # 提取内容
+                # Extract content
                 content = response_data["choices"][0]["message"]["content"]
                 
-                # 解析JSON
+                # Parse JSON
                 try:
                     plan = json.loads(content)
                     return plan
@@ -358,37 +358,37 @@ class LLMClient:
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        根据计划执行结果生成最终响应。
+        Generate final response based on plan execution results.
         
         Args:
-            plan: 计划
-            results: 执行结果
-            context: 上下文信息
+            plan: Plan
+            results: Execution results
+            context: Context information
             
         Returns:
-            最终响应
+            Final response
         """
         if not self.api_key:
             return self._mock_plan_response(plan, results)
         
         try:
-            # 构建提示
-            prompt = "请根据以下计划和执行结果生成最终响应：\n\n"
+            # Build prompt
+            prompt = "Please generate a final response based on the following plan and execution results:\n\n"
             
-            # 添加计划
-            prompt += "计划：\n"
+            # Add plan
+            prompt += "Plan:\n"
             prompt += json.dumps(plan, ensure_ascii=False, indent=2)
             prompt += "\n\n"
             
-            # 添加执行结果
-            prompt += "执行结果：\n"
+            # Add execution results
+            prompt += "Execution results:\n"
             prompt += json.dumps(results, ensure_ascii=False, indent=2)
             prompt += "\n\n"
             
-            # 添加指令
-            prompt += "请生成一个综合以上信息的完整响应。"
+            # Add instruction
+            prompt += "Please generate a comprehensive response combining the above information."
             
-            # 生成响应
+            # Generate response
             return self.generate(prompt, context)
         
         except Exception as e:
@@ -397,7 +397,7 @@ class LLMClient:
                 print(f"[LLMClient] {error_message}")
             
             return {
-                "content": "抱歉，我遇到了一个问题，无法生成响应。",
+                "content": "Sorry, I encountered a problem and cannot generate a response.",
                 "error": error_message
             }
     
@@ -407,24 +407,24 @@ class LLMClient:
         context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
         """
-        构建消息列表。
+        Build message list.
         
         Args:
-            prompt: 提示文本
-            context: 上下文信息
+            prompt: Prompt text
+            context: Context information
             
         Returns:
-            消息列表
+            Message list
         """
         messages = []
         
-        # 添加系统消息
+        # Add system message
         messages.append({
             "role": "system",
-            "content": "你是一个基于主题模型的智能助手，能够理解用户的主题兴趣，并提供相关的回答。"
+            "content": "You are an intelligent assistant based on topic models, capable of understanding user's topic interests and providing relevant answers."
         })
         
-        # 添加对话历史
+        # Add conversation history
         if context and "conversation_history" in context:
             for entry in context["conversation_history"]:
                 messages.append({
@@ -437,7 +437,7 @@ class LLMClient:
                     "content": entry["response"]
                 })
         
-        # 添加当前提示
+        # Add current prompt
         messages.append({
             "role": "user",
             "content": prompt
@@ -452,26 +452,26 @@ class LLMClient:
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
-        生成模拟响应（用于开发模式）。
+        Generate mock response (for development mode).
         
         Args:
-            prompt: 提示文本
-            context: 上下文信息
-            tools: 可用工具列表
+            prompt: Prompt text
+            context: Context information
+            tools: List of available tools
             
         Returns:
-            模拟响应
+            Mock response
         """
         if self.dev_mode:
             print(f"[LLMClient] Using mock response for prompt: {prompt[:50]}...")
         
-        # 简单的模拟响应
+        # Simple mock response
         response = {
-            "content": f"这是对'{prompt[:20]}...'的模拟响应。在实际应用中，这里会返回大语言模型的真实响应。"
+            "content": f"This is a mock response for '{prompt[:20]}...'. In actual application, this would return the real response from the large language model."
         }
         
-        # 如果提供了工具，随机选择一个工具调用
-        if tools and "搜索" in prompt.lower():
+        # If tools are provided, randomly select a tool call
+        if tools and "search" in prompt.lower():
             response["tool_calls"] = [
                 {
                     "name": "search",
@@ -489,24 +489,24 @@ class LLMClient:
         tool_results: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        生成模拟工具响应（用于开发模式）。
+        Generate mock tool response (for development mode).
         
         Args:
-            original_response: 原始响应
-            tool_results: 工具调用结果
+            original_response: Original response
+            tool_results: Tool call results
             
         Returns:
-            模拟响应
+            Mock response
         """
         if self.dev_mode:
             print(f"[LLMClient] Using mock tool response")
         
-        # 简单的模拟响应
+        # Simple mock response
         tool_names = [result["name"] for result in tool_results]
         
         return {
-            "content": f"根据工具{', '.join(tool_names)}的调用结果，我可以提供以下信息：\n\n"
-                      f"这是一个模拟响应。在实际应用中，这里会返回大语言模型基于工具结果的真实响应。"
+            "content": f"Based on the results of tools {', '.join(tool_names)}, I can provide the following information:\n\n"
+                      f"This is a mock response. In actual application, this would return the real response from the large language model based on tool results."
         }
     
     def _mock_plan(
@@ -514,34 +514,34 @@ class LLMClient:
         planning_prompt: str
     ) -> Dict[str, Any]:
         """
-        生成模拟计划（用于开发模式）。
+        Generate mock plan (for development mode).
         
         Args:
-            planning_prompt: 规划提示
+            planning_prompt: Planning prompt
             
         Returns:
-            模拟计划
+            Mock plan
         """
         if self.dev_mode:
             print(f"[LLMClient] Using mock plan for prompt: {planning_prompt[:50]}...")
         
-        # 简单的模拟计划
+        # Simple mock plan
         return {
-            "user_intent": "用户想要了解某个主题",
+            "user_intent": "User wants to learn about a topic",
             "steps": [
                 {
                     "type": "tool_call",
                     "params": {
                         "name": "search",
                         "arguments": {
-                            "query": "模拟搜索查询"
+                            "query": "mock search query"
                         }
                     }
                 },
                 {
                     "type": "llm_call",
                     "params": {
-                        "prompt": "根据搜索结果生成响应"
+                        "prompt": "Generate response based on search results"
                     }
                 }
             ]
@@ -553,19 +553,19 @@ class LLMClient:
         results: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        生成模拟计划响应（用于开发模式）。
+        Generate mock plan response (for development mode).
         
         Args:
-            plan: 计划
-            results: 执行结果
+            plan: Plan
+            results: Execution results
             
         Returns:
-            模拟响应
+            Mock response
         """
         if self.dev_mode:
             print(f"[LLMClient] Using mock plan response")
         
-        # 简单的模拟响应
+        # Simple mock response
         return {
-            "content": "这是基于执行计划的模拟响应。在实际应用中，这里会返回大语言模型基于计划执行结果的真实响应。"
+            "content": "This is a mock response based on the execution plan. In actual application, this would return the real response from the large language model based on plan execution results."
         }

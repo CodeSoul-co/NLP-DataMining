@@ -1,7 +1,7 @@
 """
-工具注册表 (Tool Registry)
+Tool Registry
 
-管理Agent可用的工具，包括注册、调用和描述。
+Manages tools available to the Agent, including registration, invocation, and description.
 """
 
 from typing import Dict, Any, List, Callable, Optional
@@ -9,12 +9,12 @@ from typing import Dict, Any, List, Callable, Optional
 
 class ToolRegistry:
     """
-    工具注册表，管理Agent可用的工具。
+    Tool registry that manages tools available to the Agent.
     """
     
     def __init__(self):
         """
-        初始化工具注册表。
+        Initialize tool registry.
         """
         self.tools = {}
         self.descriptions = {}
@@ -26,12 +26,12 @@ class ToolRegistry:
         description: str
     ) -> None:
         """
-        注册工具。
+        Register a tool.
         
         Args:
-            name: 工具名称
-            func: 工具函数
-            description: 工具描述
+            name: Tool name
+            func: Tool function
+            description: Tool description
         """
         self.tools[name] = func
         self.descriptions[name] = description
@@ -42,14 +42,14 @@ class ToolRegistry:
         args: Dict[str, Any]
     ) -> Any:
         """
-        调用工具。
+        Call a tool.
         
         Args:
-            name: 工具名称
-            args: 工具参数
+            name: Tool name
+            args: Tool arguments
             
         Returns:
-            工具调用结果
+            Tool call result
         """
         if name not in self.tools:
             raise ValueError(f"Tool '{name}' not found")
@@ -61,13 +61,13 @@ class ToolRegistry:
         name: str
     ) -> str:
         """
-        获取工具描述。
+        Get tool description.
         
         Args:
-            name: 工具名称
+            name: Tool name
             
         Returns:
-            工具描述
+            Tool description
         """
         if name not in self.descriptions:
             raise ValueError(f"Tool '{name}' not found")
@@ -76,10 +76,10 @@ class ToolRegistry:
     
     def get_all_tools(self) -> List[Dict[str, Any]]:
         """
-        获取所有工具。
+        Get all tools.
         
         Returns:
-            工具列表
+            List of tools
         """
         return [
             {
@@ -91,41 +91,41 @@ class ToolRegistry:
     
     def register_default_tools(self) -> None:
         """
-        注册默认工具。
+        Register default tools.
         """
-        # 搜索工具
+        # Search tool
         self.register_tool(
             name="search",
             func=self._search_tool,
-            description="搜索相关信息"
+            description="Search for relevant information"
         )
         
-        # 计算工具
+        # Calculate tool
         self.register_tool(
             name="calculate",
             func=self._calculate_tool,
-            description="执行数学计算"
+            description="Perform mathematical calculations"
         )
         
-        # 日期工具
+        # Date tool
         self.register_tool(
             name="get_date",
             func=self._date_tool,
-            description="获取当前日期和时间"
+            description="Get current date and time"
         )
     
     def _search_tool(self, query: str) -> Dict[str, Any]:
         """
-        搜索工具实现。
+        Search tool implementation.
         
         Args:
-            query: 搜索查询
+            query: Search query
             
         Returns:
-            搜索结果
+            Search results
         """
-        # 这里是一个简单的模拟实现
-        # 实际应用中，可以接入搜索API
+        # This is a simple mock implementation
+        # In actual application, can integrate with search API
         return {
             "query": query,
             "results": [
@@ -136,20 +136,20 @@ class ToolRegistry:
     
     def _calculate_tool(self, expression: str) -> Dict[str, Any]:
         """
-        计算工具实现。
+        Calculate tool implementation.
         
         Args:
-            expression: 数学表达式
+            expression: Mathematical expression
             
         Returns:
-            计算结果
+            Calculation result
         """
         try:
-            # 安全的eval实现
+            # Safe eval implementation
             import ast
             import operator
             
-            # 支持的操作符
+            # Supported operators
             operators = {
                 ast.Add: operator.add,
                 ast.Sub: operator.sub,
@@ -189,10 +189,10 @@ class ToolRegistry:
     
     def _date_tool(self) -> Dict[str, Any]:
         """
-        日期工具实现。
+        Date tool implementation.
         
         Returns:
-            当前日期和时间
+            Current date and time
         """
         import datetime
         

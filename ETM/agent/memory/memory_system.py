@@ -1,8 +1,8 @@
 """
-记忆系统 (Memory System)
+Memory System
 
-管理对话历史、主题演化和知识缓存。
-该模块负责存储和检索Agent的记忆。
+Manages conversation history, topic evolution, and knowledge cache.
+This module is responsible for storing and retrieving Agent's memory.
 """
 
 import os
@@ -14,18 +14,18 @@ from typing import List, Dict, Tuple, Optional, Union, Any
 from pathlib import Path
 from collections import defaultdict
 
-# 添加项目根目录到路径
+# Add project root directory to path
 sys.path.append(str(Path(__file__).parents[2]))
 
 
 class MemorySystem:
     """
-    记忆系统，管理对话历史、主题演化和知识缓存。
+    Memory system that manages conversation history, topic evolution, and knowledge cache.
     
-    功能：
-    1. 短期记忆：存储最近的对话历史
-    2. 长期记忆：存储重要信息和知识
-    3. 主题记忆：跟踪主题演化
+    Features:
+    1. Short-term memory: Stores recent conversation history
+    2. Long-term memory: Stores important information and knowledge
+    3. Topic memory: Tracks topic evolution
     """
     
     def __init__(
@@ -35,18 +35,18 @@ class MemorySystem:
         dev_mode: bool = False
     ):
         """
-        初始化记忆系统。
+        Initialize memory system.
         
         Args:
-            max_history_length: 最大对话历史长度
-            max_topic_history_length: 最大主题历史长度
-            dev_mode: 是否开启开发模式（打印调试信息）
+            max_history_length: Maximum conversation history length
+            max_topic_history_length: Maximum topic history length
+            dev_mode: Whether to enable development mode (print debug information)
         """
         self.max_history_length = max_history_length
         self.max_topic_history_length = max_topic_history_length
         self.dev_mode = dev_mode
         
-        # 会话记忆
+        # Session memory
         self.sessions = defaultdict(lambda: {
             "conversation_history": [],
             "topic_history": [],
@@ -68,19 +68,19 @@ class MemorySystem:
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """
-        添加对话记录到记忆。
+        Add conversation record to memory.
         
         Args:
-            session_id: 会话ID
-            user_input: 用户输入
-            response: 系统响应
-            topic_dist: 主题分布
-            metadata: 元数据
+            session_id: Session ID
+            user_input: User input
+            response: System response
+            topic_dist: Topic distribution
+            metadata: Metadata
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 添加对话记录
+        # Add conversation record
         timestamp = time.time()
         
         conversation_entry = {
@@ -92,11 +92,11 @@ class MemorySystem:
         
         session["conversation_history"].append(conversation_entry)
         
-        # 限制对话历史长度
+        # Limit conversation history length
         if len(session["conversation_history"]) > self.max_history_length:
             session["conversation_history"] = session["conversation_history"][-self.max_history_length:]
         
-        # 添加主题记录（如果提供）
+        # Add topic record (if provided)
         if topic_dist is not None:
             topic_entry = {
                 "timestamp": timestamp,
@@ -106,11 +106,11 @@ class MemorySystem:
             
             session["topic_history"].append(topic_entry)
             
-            # 限制主题历史长度
+            # Limit topic history length
             if len(session["topic_history"]) > self.max_topic_history_length:
                 session["topic_history"] = session["topic_history"][-self.max_topic_history_length:]
             
-            # 更新最后的主题分布
+            # Update last topic distribution
             session["metadata"]["last_topic_dist"] = topic_dist.tolist()
     
     def add_tool_results(
@@ -119,16 +119,16 @@ class MemorySystem:
         tool_results: List[Dict[str, Any]]
     ) -> None:
         """
-        添加工具调用结果到记忆。
+        Add tool call results to memory.
         
         Args:
-            session_id: 会话ID
-            tool_results: 工具调用结果
+            session_id: Session ID
+            tool_results: Tool call results
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 添加工具结果
+        # Add tool results
         timestamp = time.time()
         
         for result in tool_results:
@@ -149,18 +149,18 @@ class MemorySystem:
         final_response: Dict[str, Any]
     ) -> None:
         """
-        添加计划执行记录到记忆。
+        Add plan execution record to memory.
         
         Args:
-            session_id: 会话ID
-            plan: 计划
-            results: 执行结果
-            final_response: 最终响应
+            session_id: Session ID
+            plan: Plan
+            results: Execution results
+            final_response: Final response
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 添加计划执行记录
+        # Add plan execution record
         timestamp = time.time()
         
         plan_entry = {
@@ -179,17 +179,17 @@ class MemorySystem:
         value: Any
     ) -> None:
         """
-        添加知识到缓存。
+        Add knowledge to cache.
         
         Args:
-            session_id: 会话ID
-            key: 知识键
-            value: 知识值
+            session_id: Session ID
+            key: Knowledge key
+            value: Knowledge value
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 添加知识
+        # Add knowledge
         session["knowledge_cache"][key] = value
     
     def get_context(
@@ -199,20 +199,20 @@ class MemorySystem:
         include_plan_history: bool = False
     ) -> Dict[str, Any]:
         """
-        获取会话上下文。
+        Get session context.
         
         Args:
-            session_id: 会话ID
-            include_tool_results: 是否包含工具调用结果
-            include_plan_history: 是否包含计划历史
+            session_id: Session ID
+            include_tool_results: Whether to include tool call results
+            include_plan_history: Whether to include plan history
             
         Returns:
-            会话上下文
+            Session context
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 构建上下文
+        # Build context
         context = {
             "conversation_history": session["conversation_history"],
             "topic_history": session["topic_history"],
@@ -220,11 +220,11 @@ class MemorySystem:
             "metadata": session["metadata"]
         }
         
-        # 添加工具调用结果（如果需要）
+        # Add tool call results (if needed)
         if include_tool_results:
             context["tool_results"] = session["tool_results"]
         
-        # 添加计划历史（如果需要）
+        # Add plan history (if needed)
         if include_plan_history:
             context["plan_history"] = session["plan_history"]
         
@@ -236,22 +236,22 @@ class MemorySystem:
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        获取对话历史。
+        Get conversation history.
         
         Args:
-            session_id: 会话ID
-            limit: 返回的记录数量
+            session_id: Session ID
+            limit: Number of records to return
             
         Returns:
-            对话历史
+            Conversation history
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 获取对话历史
+        # Get conversation history
         history = session["conversation_history"]
         
-        # 限制记录数量
+        # Limit number of records
         if limit is not None:
             history = history[-limit:]
         
@@ -263,22 +263,22 @@ class MemorySystem:
         limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        获取主题历史。
+        Get topic history.
         
         Args:
-            session_id: 会话ID
-            limit: 返回的记录数量
+            session_id: Session ID
+            limit: Number of records to return
             
         Returns:
-            主题历史
+            Topic history
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 获取主题历史
+        # Get topic history
         history = session["topic_history"]
         
-        # 限制记录数量
+        # Limit number of records
         if limit is not None:
             history = history[-limit:]
         
@@ -289,18 +289,18 @@ class MemorySystem:
         session_id: str
     ) -> Optional[np.ndarray]:
         """
-        获取最后的主题分布。
+        Get last topic distribution.
         
         Args:
-            session_id: 会话ID
+            session_id: Session ID
             
         Returns:
-            主题分布
+            Topic distribution
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 获取最后的主题分布
+        # Get last topic distribution
         last_topic_dist = session["metadata"].get("last_topic_dist")
         
         if last_topic_dist is not None:
@@ -315,20 +315,20 @@ class MemorySystem:
         default: Any = None
     ) -> Any:
         """
-        获取知识缓存。
+        Get knowledge cache.
         
         Args:
-            session_id: 会话ID
-            key: 知识键
-            default: 默认值
+            session_id: Session ID
+            key: Knowledge key
+            default: Default value
             
         Returns:
-            知识值
+            Knowledge value
         """
-        # 获取会话
+        # Get session
         session = self.sessions[session_id]
         
-        # 获取知识
+        # Get knowledge
         return session["knowledge_cache"].get(key, default)
     
     def clear_session(
@@ -336,12 +336,12 @@ class MemorySystem:
         session_id: str
     ) -> None:
         """
-        清除会话。
+        Clear session.
         
         Args:
-            session_id: 会话ID
+            session_id: Session ID
         """
-        # 清除会话
+        # Clear session
         if session_id in self.sessions:
             del self.sessions[session_id]
     
@@ -351,27 +351,27 @@ class MemorySystem:
         session_id: Optional[str] = None
     ) -> None:
         """
-        保存记忆到文件。
+        Save memory to file.
         
         Args:
-            path: 保存路径
-            session_id: 会话ID（如果为None，保存所有会话）
+            path: Save path
+            session_id: Session ID (if None, save all sessions)
         """
-        # 创建目录
+        # Create directory
         os.makedirs(os.path.dirname(path), exist_ok=True)
         
-        # 准备数据
+        # Prepare data
         if session_id is not None:
-            # 保存单个会话
+            # Save single session
             if session_id in self.sessions:
                 data = {session_id: self.sessions[session_id]}
             else:
                 data = {}
         else:
-            # 保存所有会话
+            # Save all sessions
             data = dict(self.sessions)
         
-        # 保存到文件
+        # Save to file
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     
@@ -382,64 +382,64 @@ class MemorySystem:
         dev_mode: bool = False
     ) -> 'MemorySystem':
         """
-        从文件加载记忆。
+        Load memory from file.
         
         Args:
-            path: 加载路径
-            dev_mode: 是否开启开发模式
+            path: Load path
+            dev_mode: Whether to enable development mode
             
         Returns:
-            记忆系统实例
+            Memory system instance
         """
-        # 创建实例
+        # Create instance
         instance = cls(dev_mode=dev_mode)
         
-        # 加载数据
+        # Load data
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
-        # 设置会话
+        # Set sessions
         for session_id, session_data in data.items():
             instance.sessions[session_id] = session_data
         
         return instance
 
 
-# 测试代码
+# Test code
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="测试记忆系统")
-    parser.add_argument("--dev_mode", action="store_true", help="开发模式")
+    parser = argparse.ArgumentParser(description="Test memory system")
+    parser.add_argument("--dev_mode", action="store_true", help="Development mode")
     
     args = parser.parse_args()
     
-    # 初始化记忆系统
+    # Initialize memory system
     memory = MemorySystem(dev_mode=args.dev_mode)
     
-    # 测试添加对话记录
+    # Test adding conversation record
     session_id = "test_session"
     
-    # 模拟主题分布
+    # Simulate topic distribution
     topic_dist = np.array([0.1, 0.2, 0.5, 0.1, 0.1])
     
-    # 添加对话记录
+    # Add conversation record
     memory.add(
         session_id=session_id,
-        user_input="你好，我想了解气候变化。",
-        response="气候变化是指地球气候系统的长期变化，包括温度、降水和风型等。",
+        user_input="Hello, I want to learn about climate change.",
+        response="Climate change refers to long-term changes in the Earth's climate system, including temperature, precipitation, and wind patterns.",
         topic_dist=topic_dist,
         metadata={"dominant_topics": [(2, 0.5)]}
     )
     
-    # 添加知识
+    # Add knowledge
     memory.add_knowledge(
         session_id=session_id,
         key="user_interests",
-        value=["气候变化", "可再生能源"]
+        value=["climate change", "renewable energy"]
     )
     
-    # 获取上下文
+    # Get context
     context = memory.get_context(session_id)
     
     print("Context:")
@@ -447,10 +447,10 @@ if __name__ == "__main__":
     print(f"  Topic history: {len(context['topic_history'])} entries")
     print(f"  Knowledge cache: {context['knowledge_cache']}")
     
-    # 获取最后的主题分布
+    # Get last topic distribution
     last_topic_dist = memory.get_last_topic_dist(session_id)
     print(f"Last topic distribution: {last_topic_dist}")
     
-    # 保存记忆
+    # Save memory
     memory.save("test_memory.json", session_id)
     print("Memory saved to test_memory.json")
