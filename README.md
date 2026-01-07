@@ -1,7 +1,7 @@
 
 <div align="center">
 
-<img src="assets/THETA.png" width="180" alt="THETA Logo"/>
+<img src="assets/THETA.png" width="40%" alt="THETA Logo"/>
 
 <h1>THETA (θ)</h1>
 
