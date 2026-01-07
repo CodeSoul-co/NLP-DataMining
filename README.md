@@ -71,13 +71,7 @@ pip install -e .
 ---
 
 ## **Quickstart**
-
-  
-
 The commands below are templates. Replace module paths/CLI names with your actual implementation.
-
-  
-
 ### **A) Zero-shot Mode**
 
 ```
@@ -125,33 +119,19 @@ python -m theta.topic \
   --embeddings artifacts/embeddings/cfpb_lora.npy \
   --texts data/processed/cfpb.jsonl \
   --output artifacts/topics/cfpb_etm_lora
-
+```
 ---
 
 ## **Data Governance & Preprocessing**
-
-  
-
 Data governance directly impacts topic coherence and interpretability. THETA uses domain-aware cleaning strategies to preserve semantic signals while removing artifacts that distort topic structure.
-
-  
-
 Examples of governance strategies:
-
 - Finance/regulatory text (e.g., CFPB)
-    
-    - normalize privacy masks (e.g., “XXXX”, “[REDACTED]”) into special tokens
-        
-    - remove template-only submissions without substantive content
-        
-    
-- Social media health or sensitive discourse (e.g., Reddit mental health, hate speech)
-    
-    - avoid deleting emojis and slang; translate emojis into text (e.g., 😭 → “sadness”)
-        
+    - normalize privacy masks (e.g., “XXXX”, “[REDACTED]”) into special tokens      
+    - remove template-only submissions without substantive content 
+- Social media health or sensitive discourse (e.g., Reddit mental health, hate speech)   
+    - avoid deleting emojis and slang; translate emojis into text (e.g., 😭 → “sadness”)     
     - normalize abbreviations when helpful for semantic grouping
-        
-    
+     
 - Political transcripts
     
     - remove procedural metadata (e.g., “applause”, “chair intervention”) while keeping policy content
