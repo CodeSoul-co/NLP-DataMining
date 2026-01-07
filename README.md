@@ -5,8 +5,6 @@
 
 <h1>THETA (θ)</h1>
 
-Textual Hybrid Embedding–based Topic Analysis  
-
 </div>
 
 ---
