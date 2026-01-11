@@ -329,15 +329,87 @@ Recommended baselines for comparison:
 
 ## **Roadmap**
 
-- v0.1: unified dataset interface + zero-shot embeddings + ETM baseline
-    
-- v0.2: LoRA adapter training pipeline + coherence/perplexity reports
-    
-- v0.3: DETM topic evolution + interactive visualizations
-    
-- v0.4: agent-based one-click analysis + exportable reports
-    
-- v1.0: reproducible benchmark suite (datasets, baselines, downstream tasks)
+### 📅 Current Sprint (Sprint DDL: 1.14)
+
+#### 🚀 Core Data Pipeline & NLP
+
+* [ ] **Standardized Preprocessing Pipeline** `Assignee: pjq` `DDL: 1.14`
+  * [ ] Implement data cleaning, preprocessing, tokenization, and full workflow.
+  * [ ] Package as standardized modules for production readiness.
+
+* [ ] **Model Training & Data Persistence** `Assignee: pjq` `DDL: 1.14`
+  * [ ] Train Topic Models with Embedding inputs (covering multiple datasets).
+  * [ ] Save model matrices and intermediate data required for visualization.
+
+* [ ] **Output Artifacts Research** `Assignee: pjq` `DDL: 1.14`
+  * [ ] Define specific output contents (chart types, table formats, metrics).
+
+* [ ] **Basic Visualization & Export** `Assignee: pjq` `DDL: 1.14`
+  * [ ] Implement basic plotting functionality.
+  * [ ] Implement CSV table data export.
+
+---
+
+#### 🧩 Feature Development & Integration
+
+##### 📊 Visualization & Open-Source Library Integration
+
+* [ ] **Open-Source Visualization Library Integration** `Assignee: lixin`
+  * [ ] Integrate visualization capabilities from `tmtoolkit` and `pyLDAvis`.
+  * [ ] **Ref:** [tmtoolkit docs](https://tmtoolkit.readthedocs.io/en/latest/topic_modeling.html), [pyLDAvis repo](https://github.com/bmabey/pyLDAvis).
+  * [ ] Integrate with core data pipeline (pjq's part).
+
+* [ ] **New Data Adapter** `Assignee: pjq`
+  * [ ] Ensure Pipeline can handle new input data formats.
+
+##### 🤖 AI Agent & Analysis Module
+
+* [ ] **Chart/Data Analysis Agent Development** `Assignee: pjq, lixin`
+  * [ ] Tech stack: `LangGraph` / `LangChain`.
+  * [ ] Functionality: Single-pass analysis of generated charts/tables (no multi-turn dialogue required).
+  * [ ] **Focus**: Prompt Engineering.
+  * [ ] Interface: May involve multimodal API calls.
+
+* [ ] **Agent Infrastructure** `Assignee: 李芳痕`
+  * [ ] Build Agent foundational framework.
+
+* [ ] **Conversation History Storage** `Assignee: pjq`
+  * [ ] Implement cloud storage for conversation records.
+
+* [ ] **Interpretation Feature Enhancement** `Assignee: 李国正` `Priority: Low`
+  * [ ] (Time permitting) Assist with Agent interpretation features.
+
+##### 🔌 Backend & API
+
+* [ ] **Format-free Data Interface** `Assignee: 李芳痕`
+  * [ ] Develop flexible interface supporting multiple input formats.
+
+* [ ] **Scriptable Execution Interface** `Assignee: pjq`
+  * [ ] Implement Bash-like invocation interface (receive parameters from frontend -> trigger visualization/analysis code).
+
+---
+
+#### 💻 Product & Frontend Integration
+
+* [ ] **Product Design** `Assignee: 李国正`
+  * [ ] Define overall product functionality and interaction flows.
+
+* [ ] **Requirements Documentation** `Assignee: lixin`
+  * [ ] Compile detailed functional requirements documentation.
+
+* [ ] **Frontend-Backend Integration** `Assignee: 李国正, pjq`
+  * [ ] Frontend integration after page design completion.
+  * [ ] Product-level frontend-backend logic integration.
+
+---
+
+### 📋 Long-term Roadmap
+
+- **v0.1**: unified dataset interface + zero-shot embeddings + ETM baseline
+- **v0.2**: LoRA adapter training pipeline + coherence/perplexity reports
+- **v0.3**: DETM topic evolution + interactive visualizations
+- **v0.4**: agent-based one-click analysis + exportable reports
+- **v1.0**: reproducible benchmark suite (datasets, baselines, downstream tasks)
     
 
 ---
