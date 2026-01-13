@@ -336,6 +336,10 @@ Recommended baselines for comparison:
   - dataclean folder has been uploaded
   - Ready for model training
 
+- ✅ **Model Training** `Completed by: pjq`
+  - Completed model training on one dataset
+  - Training results are satisfactory
+
 #### Documentation & Design
 - ✅ **README Enhancement** `Completed by: 李国正`
   - Added to-do list statistics
@@ -351,11 +355,16 @@ Recommended baselines for comparison:
   - NotebookLM project knowledge base established
   - Link: [https://notebooklm.google.com/notebook/7af619ee-678c-4e9d-af89-482342b83e95](https://notebooklm.google.com/notebook/7af619ee-678c-4e9d-af89-482342b83e95)
 
+#### Agent Framework
+- ✅ **Agent Basic Framework** `Completed by: 李芳痕`
+  - Agent framework has been uploaded to GitHub
+
 ### 🔄 In Progress
 
-- 🔄 **Model Training Preparation** `In Progress: pjq`
-  - Data cleaning module completed
-  - Model training planned to start tomorrow
+- 🔄 **Pipeline & Agent Integration** `In Progress: pjq, 李芳痕`
+  - Model training completed on one dataset with good results
+  - Agent framework has been uploaded to GitHub
+  - Planning to integrate Agent with the entire Pipeline tomorrow
 
 - 🔄 **Frontend Page Enhancement** `In Progress: 李国正` `Date: Today`
   - Determined and implemented frontend basic framework

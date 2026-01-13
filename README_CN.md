@@ -281,6 +281,10 @@ python -m theta.run --config configs/default.yaml
   - dataclean 文件夹已上传
   - 准备进行模型训练
 
+- ✅ **模型训练** `Completed by: pjq`
+  - 已完成一个数据集的模型训练
+  - 训练效果良好
+
 #### 文档与设计
 - ✅ **README 完善** `Completed by: 李国正`
   - 添加待办事项统计
@@ -296,11 +300,16 @@ python -m theta.run --config configs/default.yaml
   - NotebookLM 项目知识库已建立
   - 链接: [https://notebooklm.google.com/notebook/7af619ee-678c-4e9d-af89-482342b83e95](https://notebooklm.google.com/notebook/7af619ee-678c-4e9d-af89-482342b83e95)
 
+#### Agent 框架
+- ✅ **Agent 基础框架** `Completed by: 李芳痕`
+  - Agent 框架已上传到 GitHub
+
 ### 🔄 进行中
 
-- 🔄 **模型训练准备** `In Progress: pjq`
-  - 数据清洗模块已完成
-  - 计划明天开始模型训练
+- 🔄 **Pipeline 与 Agent 整合** `In Progress: pjq, 李芳痕`
+  - 模型训练已完成一个数据集，效果良好
+  - Agent 框架已上传到 GitHub
+  - 计划明天尝试将 Agent 和整个 Pipeline 整合串起来
 
 - 🔄 **前端页面功能完善** `In Progress: 李国正` `Date: 今日`
   - 确定前端基本框架并实现
