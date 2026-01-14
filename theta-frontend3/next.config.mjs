@@ -17,6 +17,8 @@ const nextConfig = {
   devIndicators: {
     buildActivity: false,
   },
+  // 优化字体加载
+  optimizeFonts: true,
 }
 
 export default nextConfig
