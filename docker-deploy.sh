@@ -30,6 +30,22 @@ fi
 echo "✅ Docker 环境检查通过"
 echo ""
 
+# 检查并配置 Docker 镜像加速器（腾讯云优化）
+if ! docker info 2>/dev/null | grep -q "mirror.ccs.tencentyun.com"; then
+    echo "🔧 检测到未配置 Docker 镜像加速器..."
+    read -p "是否自动配置腾讯云镜像加速器? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [ -f "setup-docker-mirror.sh" ]; then
+            chmod +x setup-docker-mirror.sh
+            sudo ./setup-docker-mirror.sh
+        else
+            echo "⚠️  未找到 setup-docker-mirror.sh，请手动配置"
+            echo "参考: https://cloud.tencent.com/document/product/1141/50332"
+        fi
+    fi
+fi
+
 # 检查 .env 文件
 if [ ! -f ".env" ]; then
     echo "📝 创建 .env 文件..."

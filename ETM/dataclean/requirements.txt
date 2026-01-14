@@ -6,3 +6,6 @@ pypdf2>=2.10.5
 pdfminer.six>=20220524
 pdf2docx>=0.5.6
 jieba>=0.42.1
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
