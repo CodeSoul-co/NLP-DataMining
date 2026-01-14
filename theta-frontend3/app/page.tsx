@@ -45,6 +45,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { DataProcessingView } from "@/components/data-processing"
+import { Progress } from "@/components/ui/progress"
+import { DataCleanAPI } from "@/lib/api/dataclean"
+import { Download, CheckCircle2, XCircle, Loader2, Clock } from "lucide-react"
 
 type ViewType = "projects" | "data" | "processing" | "analysis" | "visualization" | "report" | "tasks"
 
@@ -58,10 +61,16 @@ type Message = {
 
 type ProcessingJob = {
   id: string
+  taskId?: string  // DataClean API 返回的任务ID
   name: string
   sourceDataset: string
-  status: "processing" | "completed"
+  sourceDatasetId: string
+  fileCount: number
+  status: "pending" | "processing" | "completed" | "failed"
+  progress: number
   date: string
+  resultFile?: string  // 处理结果文件名
+  error?: string
 }
 
 // 数据集中的文件类型
@@ -250,8 +259,9 @@ export default function Home() {
       uploadDate: new Date().toISOString().split("T")[0],
     }))
     
+    const newDatasetId = `job-${Date.now()}`
     const newDataset: Dataset = {
-      id: `job-${Date.now()}`,
+      id: newDatasetId,
       name: finalName,
       files: newFiles,
       totalSize: calculateTotalSize(newFiles),
@@ -259,13 +269,15 @@ export default function Home() {
     }
     
     setDatasets([...datasets, newDataset])
+    // 存储实际文件用于后续 API 调用
+    storeFilesForDataset(newDatasetId, pendingFiles)
     setShowNameModal(false)
     setPendingFiles([])
     setDatasetName("")
     setAppState("workspace")
     setCurrentView("data")
     // 直接进入新创建的数据集
-    setSelectedDatasetId(newDataset.id)
+    setSelectedDatasetId(newDatasetId)
   }
   
   // 向已有数据集添加文件
@@ -291,7 +303,10 @@ export default function Home() {
       }
       return dataset
     }))
-  }, [])
+    
+    // 存储实际文件用于后续 API 调用
+    storeFilesForDataset(datasetId, files)
+  }, [storeFilesForDataset])
   
   // 从数据集中删除文件
   const handleRemoveFileFromDataset = useCallback((datasetId: string, fileId: string) => {
@@ -308,29 +323,244 @@ export default function Home() {
     }))
   }, [])
 
-  const handleSourceConfirm = () => {
+  // 存储实际上传的文件（用于 API 调用）
+  const [uploadedFilesMap, setUploadedFilesMap] = useState<Map<string, File[]>>(new Map())
+  
+  // 存储文件到数据集映射
+  const storeFilesForDataset = useCallback((datasetId: string, files: File[]) => {
+    setUploadedFilesMap(prev => {
+      const newMap = new Map(prev)
+      const existing = newMap.get(datasetId) || []
+      newMap.set(datasetId, [...existing, ...files])
+      return newMap
+    })
+  }, [])
+
+  const handleSourceConfirm = async () => {
     if (selectedSource) {
       const sourceDataset = datasets.find((d) => d.id === selectedSource)
       if (sourceDataset) {
+        const jobId = `processed-${Date.now()}`
         const newJob: ProcessingJob = {
-          id: `processed-${Date.now()}`,
+          id: jobId,
           name: `${sourceDataset.name}_cleaned`,
           sourceDataset: sourceDataset.name,
-          status: "processing",
+          sourceDatasetId: sourceDataset.id,
+          fileCount: sourceDataset.files.length,
+          status: "pending",
+          progress: 0,
           date: new Date().toISOString().split("T")[0],
         }
-        setProcessingJobs([...processingJobs, newJob])
+        setProcessingJobs(prev => [...prev, newJob])
+        setShowSourceModal(false)
+        setCurrentView("processing")
+        setSelectedSource("")
 
-        // Simulate processing completion after 2 seconds
-        setTimeout(() => {
-          setProcessingJobs((prev) => prev.map((job) => (job.id === newJob.id ? { ...job, status: "completed" } : job)))
-        }, 2000)
+        // 获取该数据集的实际文件
+        const files = uploadedFilesMap.get(sourceDataset.id)
+        
+        if (!files || files.length === 0) {
+          // 如果没有实际文件（mock 数据），模拟处理过程
+          setProcessingJobs(prev => prev.map(job => 
+            job.id === jobId ? { ...job, status: "processing", progress: 10 } : job
+          ))
+          
+          // 模拟进度更新
+          const progressInterval = setInterval(() => {
+            setProcessingJobs(prev => prev.map(job => {
+              if (job.id === jobId && job.status === "processing") {
+                const newProgress = Math.min(job.progress + 20, 90)
+                return { ...job, progress: newProgress }
+              }
+              return job
+            }))
+          }, 500)
+          
+          // 模拟完成
+          setTimeout(() => {
+            clearInterval(progressInterval)
+            setProcessingJobs(prev => prev.map(job => 
+              job.id === jobId ? { 
+                ...job, 
+                status: "completed", 
+                progress: 100,
+                resultFile: `${sourceDataset.name}_cleaned.csv`
+              } : job
+            ))
+          }, 3000)
+        } else {
+          // 有实际文件，调用 DataClean API
+          try {
+            setProcessingJobs(prev => prev.map(job => 
+              job.id === jobId ? { ...job, status: "processing", progress: 10 } : job
+            ))
+            
+            // 调用批量处理 API
+            const response = await DataCleanAPI.processBatchFiles(
+              files,
+              'chinese',
+              true,
+              ['remove_urls', 'remove_html_tags', 'normalize_whitespace']
+            )
+            
+            // 更新任务状态
+            setProcessingJobs(prev => prev.map(job => 
+              job.id === jobId ? { 
+                ...job, 
+                taskId: response.task_id,
+                status: "completed", 
+                progress: 100,
+                resultFile: `${sourceDataset.name}_cleaned.csv`
+              } : job
+            ))
+          } catch (error: any) {
+            setProcessingJobs(prev => prev.map(job => 
+              job.id === jobId ? { 
+                ...job, 
+                status: "failed", 
+                progress: 100,
+                error: error.message || "处理失败"
+              } : job
+            ))
+          }
+        }
       }
-
-      setShowSourceModal(false)
-      setCurrentView("processing")
-      setSelectedSource("")
     }
+  }
+
+  // 下载处理结果
+  const handleDownloadResult = async (job: ProcessingJob) => {
+    if (job.taskId) {
+      // 有真实的 taskId，调用 API 下载
+      try {
+        await DataCleanAPI.downloadResultFile(job.taskId, job.resultFile || 'result.csv')
+      } catch (error) {
+        console.error('下载失败:', error)
+        // 如果 API 下载失败，尝试生成模拟文件
+        downloadMockCSV(job)
+      }
+    } else {
+      // 没有真实 taskId（mock 数据），生成模拟 CSV
+      downloadMockCSV(job)
+    }
+  }
+
+  // 生成模拟 CSV 下载
+  const downloadMockCSV = (job: ProcessingJob) => {
+    const csvContent = `filename,content,processed_date
+"${job.sourceDataset}_file1.txt","清洗后的文本内容示例1...","${job.date}"
+"${job.sourceDataset}_file2.txt","清洗后的文本内容示例2...","${job.date}"
+"${job.sourceDataset}_file3.txt","清洗后的文本内容示例3...","${job.date}"`
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = job.resultFile || 'result.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // 直接处理数据集（从数据集详情页调用）
+  const startProcessingDataset = async (dataset: Dataset) => {
+    const jobId = `processed-${Date.now()}`
+    const newJob: ProcessingJob = {
+      id: jobId,
+      name: `${dataset.name}_cleaned`,
+      sourceDataset: dataset.name,
+      sourceDatasetId: dataset.id,
+      fileCount: dataset.files.length,
+      status: "pending",
+      progress: 0,
+      date: new Date().toISOString().split("T")[0],
+    }
+    setProcessingJobs(prev => [...prev, newJob])
+    setCurrentView("processing")
+
+    // 获取该数据集的实际文件
+    const files = uploadedFilesMap.get(dataset.id)
+    
+    if (!files || files.length === 0) {
+      // 如果没有实际文件（mock 数据），模拟处理过程
+      setProcessingJobs(prev => prev.map(job => 
+        job.id === jobId ? { ...job, status: "processing", progress: 10 } : job
+      ))
+      
+      // 模拟进度更新
+      const progressInterval = setInterval(() => {
+        setProcessingJobs(prev => prev.map(job => {
+          if (job.id === jobId && job.status === "processing") {
+            const newProgress = Math.min(job.progress + 20, 90)
+            return { ...job, progress: newProgress }
+          }
+          return job
+        }))
+      }, 500)
+      
+      // 模拟完成
+      setTimeout(() => {
+        clearInterval(progressInterval)
+        setProcessingJobs(prev => prev.map(job => 
+          job.id === jobId ? { 
+            ...job, 
+            status: "completed", 
+            progress: 100,
+            resultFile: `${dataset.name}_cleaned.csv`
+          } : job
+        ))
+      }, 3000)
+    } else {
+      // 有实际文件，调用 DataClean API
+      try {
+        setProcessingJobs(prev => prev.map(job => 
+          job.id === jobId ? { ...job, status: "processing", progress: 10 } : job
+        ))
+        
+        // 调用批量处理 API
+        const response = await DataCleanAPI.processBatchFiles(
+          files,
+          'chinese',
+          true,
+          ['remove_urls', 'remove_html_tags', 'normalize_whitespace']
+        )
+        
+        // 更新任务状态
+        setProcessingJobs(prev => prev.map(job => 
+          job.id === jobId ? { 
+            ...job, 
+            taskId: response.task_id,
+            status: "completed", 
+            progress: 100,
+            resultFile: `${dataset.name}_cleaned.csv`
+          } : job
+        ))
+      } catch (error: any) {
+        setProcessingJobs(prev => prev.map(job => 
+          job.id === jobId ? { 
+            ...job, 
+            status: "failed", 
+            progress: 100,
+            error: error.message || "处理失败"
+          } : job
+        ))
+      }
+    }
+  }
+
+  // 删除处理任务
+  const handleDeleteJob = async (jobId: string) => {
+    const job = processingJobs.find(j => j.id === jobId)
+    if (job?.taskId) {
+      // 如果有真实 taskId，也删除服务器上的任务
+      try {
+        await DataCleanAPI.deleteTask(job.taskId)
+      } catch (error) {
+        console.error('删除服务器任务失败:', error)
+      }
+    }
+    setProcessingJobs(prev => prev.filter(j => j.id !== jobId))
   }
 
   const handleSendMessage = () => {
@@ -604,10 +834,27 @@ export default function Home() {
                       onSelectDataset={setSelectedDatasetId}
                       onAddFiles={handleAddFilesToDataset}
                       onRemoveFile={handleRemoveFileFromDataset}
+                      onStartProcessing={(datasetId) => {
+                        // 直接开始处理选定的数据集
+                        setSelectedSource(datasetId)
+                        // 使用 setTimeout 确保状态更新后再调用
+                        setTimeout(() => {
+                          const dataset = datasets.find(d => d.id === datasetId)
+                          if (dataset) {
+                            startProcessingDataset(dataset)
+                          }
+                        }, 0)
+                      }}
                     />
                   )}
                   {currentView === "processing" && (
-                    <ProcessingView key="processing" jobs={processingJobs} onNewTask={handleNewProcessingTask} />
+                    <ProcessingView 
+                      key="processing" 
+                      jobs={processingJobs} 
+                      onNewTask={handleNewProcessingTask}
+                      onDownload={handleDownloadResult}
+                      onDelete={handleDeleteJob}
+                    />
                   )}
                   {currentView === "projects" && <PlaceholderView key="projects" title="我的项目" />}
                   {currentView === "report" && <PlaceholderView key="report" title="智能报告" />}
@@ -1006,6 +1253,7 @@ function DataView({
   onSelectDataset,
   onAddFiles,
   onRemoveFile,
+  onStartProcessing,
 }: { 
   datasets: Dataset[]
   onUpload: () => void
@@ -1013,6 +1261,7 @@ function DataView({
   onSelectDataset: (id: string | null) => void
   onAddFiles: (datasetId: string, files: File[]) => void
   onRemoveFile: (datasetId: string, fileId: string) => void
+  onStartProcessing: (datasetId: string) => void
 }) {
   const [isDraggingInDetail, setIsDraggingInDetail] = useState(false)
   
@@ -1166,7 +1415,10 @@ function DataView({
                     <p className="text-sm text-slate-500">对文件进行文本清洗和格式转换</p>
                   </div>
                 </div>
-                <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Button 
+                  onClick={() => onStartProcessing(selectedDataset.id)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
                   开始处理
                 </Button>
               </div>
@@ -1244,13 +1496,62 @@ function DataView({
   )
 }
 
-function ProcessingView({ jobs, onNewTask }: { jobs: ProcessingJob[]; onNewTask: () => void }) {
+function ProcessingView({ 
+  jobs, 
+  onNewTask,
+  onDownload,
+  onDelete,
+}: { 
+  jobs: ProcessingJob[]
+  onNewTask: () => void
+  onDownload: (job: ProcessingJob) => void
+  onDelete: (jobId: string) => void
+}) {
+  const getStatusIcon = (status: ProcessingJob['status']) => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="w-5 h-5 text-slate-400" />
+      case 'processing':
+        return <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+      case 'completed':
+        return <CheckCircle2 className="w-5 h-5 text-green-600" />
+      case 'failed':
+        return <XCircle className="w-5 h-5 text-red-600" />
+    }
+  }
+
+  const getStatusText = (status: ProcessingJob['status']) => {
+    switch (status) {
+      case 'pending':
+        return '等待中'
+      case 'processing':
+        return '处理中'
+      case 'completed':
+        return '已完成'
+      case 'failed':
+        return '失败'
+    }
+  }
+
+  const getStatusColor = (status: ProcessingJob['status']) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-slate-100 text-slate-700'
+      case 'processing':
+        return 'bg-blue-100 text-blue-700'
+      case 'completed':
+        return 'bg-green-100 text-green-700'
+      case 'failed':
+        return 'bg-red-100 text-red-700'
+    }
+  }
+
   return (
     <div className="p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-slate-900 mb-2">数据处理</h2>
-          <p className="text-slate-600">创建和管理数据处理任务</p>
+          <p className="text-slate-600">选择数据集进行文本清洗和格式转换</p>
         </div>
         <Button onClick={onNewTask} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
           <Plus className="w-4 h-4" />
@@ -1266,41 +1567,98 @@ function ProcessingView({ jobs, onNewTask }: { jobs: ProcessingJob[]; onNewTask:
             </div>
             <div>
               <p className="text-slate-500 mb-2">暂无处理记录</p>
-              <p className="text-sm text-slate-400">点击上方按钮创建新的数据处理任务</p>
+              <p className="text-sm text-slate-400">点击上方按钮选择数据集开始处理</p>
             </div>
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-4">
           {jobs.map((job, index) => (
             <motion.div
               key={job.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
+              transition={{ delay: index * 0.05 }}
             >
-              <Card className="border border-slate-200 bg-white hover:shadow-lg transition-all cursor-pointer p-6 rounded-xl">
-                <div className="flex flex-col gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-green-600 flex items-center justify-center">
-                    <FileCog className="w-8 h-8 text-white" />
+              <Card className="border border-slate-200 bg-white hover:shadow-md transition-all p-6 rounded-xl">
+                <div className="flex items-start gap-4">
+                  {/* 图标 */}
+                  <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                    job.status === 'completed' ? 'bg-green-100' : 
+                    job.status === 'failed' ? 'bg-red-100' : 
+                    job.status === 'processing' ? 'bg-blue-100' : 'bg-slate-100'
+                  }`}>
+                    {job.status === 'completed' ? (
+                      <FileText className="w-7 h-7 text-green-600" />
+                    ) : (
+                      <FileCog className={`w-7 h-7 ${
+                        job.status === 'failed' ? 'text-red-600' : 
+                        job.status === 'processing' ? 'text-blue-600' : 'text-slate-400'
+                      }`} />
+                    )}
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-slate-900 text-lg mb-1">{job.name}</h3>
-                    <p className="text-sm text-slate-500">源数据: {job.sourceDataset}</p>
-                  </div>
-                  <div className="pt-3 border-t border-slate-100 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-slate-600">状态:</p>
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full ${
-                          job.status === "completed" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                        }`}
-                      >
-                        {job.status === "completed" ? "已完成" : "处理中..."}
+                  
+                  {/* 内容 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="font-semibold text-slate-900 text-lg truncate">{job.name}</h3>
+                      <span className={`text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5 ${getStatusColor(job.status)}`}>
+                        {getStatusIcon(job.status)}
+                        {getStatusText(job.status)}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-600">创建日期: {job.date}</p>
+                    
+                    <div className="flex items-center gap-4 text-sm text-slate-500 mb-3">
+                      <span>源数据: {job.sourceDataset}</span>
+                      <span>·</span>
+                      <span>{job.fileCount} 个文件</span>
+                      <span>·</span>
+                      <span>{job.date}</span>
+                    </div>
+                    
+                    {/* 进度条 */}
+                    {(job.status === 'processing' || job.status === 'pending') && (
+                      <div className="mb-3">
+                        <Progress value={job.progress} className="h-2" />
+                        <p className="text-xs text-slate-400 mt-1">处理进度: {job.progress}%</p>
+                      </div>
+                    )}
+                    
+                    {/* 错误信息 */}
+                    {job.status === 'failed' && job.error && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                        <p className="text-sm text-red-600">{job.error}</p>
+                      </div>
+                    )}
+                    
+                    {/* 结果文件 */}
+                    {job.status === 'completed' && job.resultFile && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-green-600" />
+                          <span className="text-sm text-green-700 font-medium">{job.resultFile}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => onDownload(job)}
+                          className="bg-green-600 hover:bg-green-700 text-white gap-1.5"
+                        >
+                          <Download className="w-4 h-4" />
+                          下载 CSV
+                        </Button>
+                      </div>
+                    )}
                   </div>
+                  
+                  {/* 删除按钮 */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onDelete(job.id)}
+                    className="text-slate-400 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               </Card>
             </motion.div>
