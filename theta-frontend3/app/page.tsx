@@ -669,24 +669,73 @@ export default function Home() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {/* 显示待上传的文件列表 */}
-            {pendingFiles.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-slate-700">已选文件</Label>
-                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
+            {/* 显示待上传的文件列表，支持添加和删除 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-slate-700">已选文件 ({pendingFiles.length})</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.multiple = true
+                    input.onchange = (e) => {
+                      const newFiles = Array.from((e.target as HTMLInputElement).files || [])
+                      if (newFiles.length > 0) {
+                        setPendingFiles(prev => [...prev, ...newFiles])
+                      }
+                    }
+                    input.click()
+                  }}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 gap-1"
+                >
+                  <Plus className="w-4 h-4" />
+                  添加更多
+                </Button>
+              </div>
+              {pendingFiles.length > 0 ? (
+                <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1">
                   {pendingFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm py-1 px-2 bg-slate-50 rounded">
+                    <div key={index} className="flex items-center justify-between text-sm py-1.5 px-2 bg-slate-50 rounded group hover:bg-slate-100">
                       <span className="text-slate-700 truncate flex-1">{file.name}</span>
-                      <span className="text-slate-400 ml-2 flex-shrink-0">
-                        {file.size >= 1024 * 1024 
-                          ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-                          : `${(file.size / 1024).toFixed(1)} KB`}
-                      </span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-slate-400">
+                          {file.size >= 1024 * 1024 
+                            ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                            : `${(file.size / 1024).toFixed(1)} KB`}
+                        </span>
+                        <button
+                          onClick={() => setPendingFiles(prev => prev.filter((_, i) => i !== index))}
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div 
+                  className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50/50 transition-colors"
+                  onClick={() => {
+                    const input = document.createElement('input')
+                    input.type = 'file'
+                    input.multiple = true
+                    input.onchange = (e) => {
+                      const newFiles = Array.from((e.target as HTMLInputElement).files || [])
+                      if (newFiles.length > 0) {
+                        setPendingFiles(newFiles)
+                      }
+                    }
+                    input.click()
+                  }}
+                >
+                  <Upload className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm text-slate-500">点击选择文件</p>
+                </div>
+              )}
+            </div>
             
             <div className="space-y-2">
               <Label htmlFor="dataset-name" className="text-slate-700">
@@ -717,7 +766,11 @@ export default function Home() {
             }} className="border-slate-300">
               取消
             </Button>
-            <Button onClick={handleNameConfirm} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Button 
+              onClick={handleNameConfirm} 
+              disabled={pendingFiles.length === 0}
+              className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               创建数据集
             </Button>
           </DialogFooter>
@@ -728,9 +781,11 @@ export default function Home() {
         <DialogContent className="sm:max-w-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-slate-900">选择数据源</DialogTitle>
+            <DialogDescription className="text-slate-500">
+              请选择一个完整的数据集文件夹作为处理源
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <p className="text-sm text-slate-600">请选择一个完整的数据集文件夹作为处理源</p>
             <RadioGroup value={selectedSource} onValueChange={setSelectedSource}>
               <div className="space-y-2">
                 {datasets.map((dataset) => (
@@ -747,7 +802,7 @@ export default function Home() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-slate-900">{dataset.name}</p>
                           <p className="text-xs text-slate-500">
-                            {dataset.files} 文件 · {dataset.size}
+                            {dataset.files.length} 文件 · {dataset.totalSize}
                           </p>
                         </div>
                       </div>
