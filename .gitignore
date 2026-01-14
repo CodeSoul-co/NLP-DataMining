@@ -214,3 +214,13 @@ __marimo__/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Docker 离线构建文件（本地生成，不需要提交）
+docker-offline-build/
+
+# Next.js 开发日志
+.next/dev/logs/
+*.log
+
+# 临时文件
+/tmp/theta-venv/
