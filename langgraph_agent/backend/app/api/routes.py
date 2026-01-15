@@ -153,6 +153,103 @@ async def get_dataset_info(dataset_name: str):
     )
 
 
+@router.get("/datasets/{dataset_name}/columns", tags=["data"])
+async def get_dataset_columns(dataset_name: str):
+    """
+    Get column information for a dataset with auto-detected column types.
+    
+    Returns columns categorized by their likely purpose:
+    - text_columns: Columns likely containing text content
+    - time_columns: Columns likely containing timestamps
+    - dimension_columns: Columns likely containing categorical dimensions (region, type, etc.)
+    - label_columns: Columns likely containing labels
+    - other_columns: Other columns
+    
+    Frontend can use this to let users confirm or modify column mappings.
+    """
+    import pandas as pd
+    
+    dataset_dir = settings.DATA_DIR / dataset_name
+    if not dataset_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_name}' not found")
+    
+    csv_files = list(dataset_dir.glob("*.csv"))
+    if not csv_files:
+        raise HTTPException(status_code=404, detail=f"No CSV files found")
+    
+    csv_file = csv_files[0]
+    for f in csv_files:
+        if "text_only" in f.name or "cleaned" in f.name:
+            csv_file = f
+            break
+    
+    df = pd.read_csv(csv_file, nrows=100)
+    
+    # Auto-detect column types
+    text_keywords = ['text', 'content', 'body', 'title', 'description', '内容', '文本', '标题']
+    time_keywords = ['time', 'date', 'year', 'month', 'day', 'timestamp', '时间', '日期', '年份', '年', '月']
+    dim_keywords = ['region', 'province', 'city', 'area', 'category', 'type', 'department', 'source',
+                    '省', '市', '地区', '区域', '类型', '部门', '来源', '分类']
+    label_keywords = ['label', 'class', 'category', 'tag', '标签', '类别']
+    
+    columns_info = {
+        'all_columns': df.columns.tolist(),
+        'text_columns': [],
+        'time_columns': [],
+        'dimension_columns': [],
+        'label_columns': [],
+        'other_columns': [],
+        'auto_detected': {
+            'text_column': None,
+            'time_column': None,
+            'dimension_column': None
+        }
+    }
+    
+    for col in df.columns:
+        col_lower = col.lower()
+        sample_values = df[col].dropna().head(5).tolist()
+        
+        # Check column type
+        is_text = any(k in col_lower for k in text_keywords)
+        is_time = any(k in col_lower for k in time_keywords)
+        is_dim = any(k in col_lower for k in dim_keywords)
+        is_label = any(k in col_lower for k in label_keywords)
+        
+        # Also check data type and content
+        if df[col].dtype == 'object':
+            avg_len = df[col].astype(str).str.len().mean()
+            if avg_len > 50:  # Long text
+                is_text = True
+        
+        col_info = {
+            'name': col,
+            'dtype': str(df[col].dtype),
+            'sample_values': [str(v)[:100] for v in sample_values],
+            'unique_count': int(df[col].nunique()),
+            'null_count': int(df[col].isnull().sum())
+        }
+        
+        if is_text:
+            columns_info['text_columns'].append(col_info)
+            if not columns_info['auto_detected']['text_column']:
+                columns_info['auto_detected']['text_column'] = col
+        elif is_time:
+            columns_info['time_columns'].append(col_info)
+            if not columns_info['auto_detected']['time_column']:
+                columns_info['auto_detected']['time_column'] = col
+        elif is_dim:
+            columns_info['dimension_columns'].append(col_info)
+            if not columns_info['auto_detected']['dimension_column']:
+                columns_info['auto_detected']['dimension_column'] = col
+        elif is_label:
+            columns_info['label_columns'].append(col_info)
+        else:
+            columns_info['other_columns'].append(col_info)
+    
+    return columns_info
+
+
 @router.get("/results", response_model=List[ResultInfo], tags=["results"])
 async def list_results():
     """List all training results"""
@@ -326,6 +423,249 @@ async def get_visualization(dataset: str, mode: str, filename: str):
         raise HTTPException(status_code=404, detail="Visualization not found")
     
     return FileResponse(viz_path)
+
+
+@router.get("/results/{dataset}/{mode}/temporal-analysis", tags=["results"])
+async def get_temporal_analysis(
+    dataset: str, 
+    mode: str, 
+    freq: str = Query(default="M", description="Time frequency: Y=year, M=month, Q=quarter"),
+    top_k: int = Query(default=10, ge=1, le=20, description="Number of top topics to include")
+):
+    """
+    Get temporal analysis data for frontend visualization.
+    
+    Returns:
+    - document_volume: Document count over time (Tab 2 Chart A)
+    - topic_evolution: Topic strength over time (Tab 2 Chart B)
+    - topic_trends: Rising/falling topic trends
+    """
+    import numpy as np
+    import pandas as pd
+    
+    result_path = settings.get_result_path(dataset, mode)
+    model_dir = result_path / "model"
+    
+    if not model_dir.exists():
+        raise HTTPException(status_code=404, detail="Model results not found")
+    
+    # Load theta and topic_words
+    theta_files = sorted(model_dir.glob("theta_*.npy"), reverse=True)
+    topic_files = sorted(model_dir.glob("topic_words_*.json"), reverse=True)
+    
+    if not theta_files or not topic_files:
+        raise HTTPException(status_code=404, detail="Required files not found")
+    
+    theta = np.load(str(theta_files[0]))
+    with open(topic_files[0]) as f:
+        topic_words_raw = json.load(f)
+    
+    topic_words = [(int(k), [(w, float(p)) for w, p in words]) for k, words in topic_words_raw.items()]
+    
+    # Try to load timestamps from data
+    data_dir = settings.DATA_DIR / dataset
+    csv_files = list(data_dir.glob("*.csv"))
+    
+    if not csv_files:
+        return {
+            "available": False,
+            "message": "📊 时序分析功能",
+            "reason": "当前数据集未包含原始数据文件。",
+            "suggestions": [
+                "请将原始CSV数据文件放入 data/{dataset}/ 目录",
+                "确保数据文件包含时间列（如 publish_date, timestamp, year 等）"
+            ],
+            "actions": [
+                {"label": "跳过", "action": "skip"},
+                {"label": "去添加", "action": "add_data"}
+            ]
+        }
+    
+    df = pd.read_csv(csv_files[0])
+    time_cols = [c for c in df.columns if any(t in c.lower() for t in ['time', 'date', 'year', '时间', '日期', '年份'])]
+    
+    if not time_cols:
+        available_cols = df.columns.tolist()
+        return {
+            "available": False,
+            "message": "📊 时序分析功能",
+            "reason": "当前数据集未包含时间列。",
+            "suggestions": [
+                "在原始数据中添加时间列（如 publish_date）",
+                "重新上传数据并在"列映射"中选择时间列"
+            ],
+            "available_columns": available_cols,
+            "actions": [
+                {"label": "跳过", "action": "skip"},
+                {"label": "去添加", "action": "add_column"}
+            ]
+        }
+    
+    if len(df) != len(theta):
+        raise HTTPException(status_code=400, detail="Data length mismatch with model results")
+    
+    from visualization.temporal_analysis import TemporalTopicAnalyzer
+    
+    analyzer = TemporalTopicAnalyzer(
+        theta=theta,
+        timestamps=df[time_cols[0]].values,
+        topic_words=topic_words
+    )
+    
+    return analyzer.get_visualization_data_for_frontend(freq=freq, top_k_topics=top_k)
+
+
+@router.get("/results/{dataset}/{mode}/dimension-analysis", tags=["results"])
+async def get_dimension_analysis(
+    dataset: str, 
+    mode: str,
+    top_k_topics: int = Query(default=10, ge=1, le=20),
+    top_k_dimensions: int = Query(default=20, ge=1, le=50)
+):
+    """
+    Get dimension/spatial analysis data for frontend visualization.
+    
+    Returns:
+    - heatmap_data: Topic distribution by dimension (Tab 4)
+    - dimension_stats: Dimension statistics
+    """
+    import numpy as np
+    import pandas as pd
+    
+    result_path = settings.get_result_path(dataset, mode)
+    model_dir = result_path / "model"
+    
+    if not model_dir.exists():
+        raise HTTPException(status_code=404, detail="Model results not found")
+    
+    # Load theta and topic_words
+    theta_files = sorted(model_dir.glob("theta_*.npy"), reverse=True)
+    topic_files = sorted(model_dir.glob("topic_words_*.json"), reverse=True)
+    
+    if not theta_files or not topic_files:
+        raise HTTPException(status_code=404, detail="Required files not found")
+    
+    theta = np.load(str(theta_files[0]))
+    with open(topic_files[0]) as f:
+        topic_words_raw = json.load(f)
+    
+    topic_words = [(int(k), [(w, float(p)) for w, p in words]) for k, words in topic_words_raw.items()]
+    
+    # Try to load dimension column from data
+    data_dir = settings.DATA_DIR / dataset
+    csv_files = list(data_dir.glob("*.csv"))
+    
+    if not csv_files:
+        return {
+            "available": False,
+            "message": "📊 维度分析功能",
+            "reason": "当前数据集未包含原始数据文件。",
+            "suggestions": [
+                "请将原始CSV数据文件放入 data/{dataset}/ 目录",
+                "确保数据文件包含维度列（如 province, region, category 等）"
+            ],
+            "actions": [
+                {"label": "跳过", "action": "skip"},
+                {"label": "去添加", "action": "add_data"}
+            ]
+        }
+    
+    df = pd.read_csv(csv_files[0])
+    dim_cols = [c for c in df.columns if any(d in c.lower() for d in ['region', 'province', 'city', 'category', 'type', '省', '市', '地区', '类型', '部门'])]
+    
+    if not dim_cols:
+        available_cols = df.columns.tolist()
+        return {
+            "available": False,
+            "message": "📊 维度分析功能",
+            "reason": "当前数据集未包含维度列（如省份、地区、类型等）。",
+            "suggestions": [
+                "在原始数据中添加维度列（如 province, category）",
+                "重新上传数据并在"列映射"中选择维度列"
+            ],
+            "available_columns": available_cols,
+            "actions": [
+                {"label": "跳过", "action": "skip"},
+                {"label": "去添加", "action": "add_column"}
+            ]
+        }
+    
+    if len(df) != len(theta):
+        raise HTTPException(status_code=400, detail="Data length mismatch with model results")
+    
+    from visualization.dimension_analysis import DimensionAnalyzer
+    
+    analyzer = DimensionAnalyzer(
+        theta=theta,
+        dimension_values=df[dim_cols[0]].values,
+        topic_words=topic_words,
+        dimension_name=dim_cols[0]
+    )
+    
+    return analyzer.get_visualization_data_for_frontend(
+        top_k_topics=top_k_topics,
+        top_k_dimensions=top_k_dimensions
+    )
+
+
+@router.get("/results/{dataset}/{mode}/topic-overview", tags=["results"])
+async def get_topic_overview(
+    dataset: str, 
+    mode: str,
+    top_k: int = Query(default=10, ge=1, le=50, description="Number of keywords per topic")
+):
+    """
+    Get topic overview data for frontend visualization (Tab 1).
+    
+    Returns:
+    - topics: List of topics with id, keywords, and proportion
+    - total_documents: Total number of documents
+    """
+    import numpy as np
+    
+    result_path = settings.get_result_path(dataset, mode)
+    model_dir = result_path / "model"
+    
+    if not model_dir.exists():
+        raise HTTPException(status_code=404, detail="Model results not found")
+    
+    # Load theta and topic_words
+    theta_files = sorted(model_dir.glob("theta_*.npy"), reverse=True)
+    topic_files = sorted(model_dir.glob("topic_words_*.json"), reverse=True)
+    
+    if not theta_files or not topic_files:
+        raise HTTPException(status_code=404, detail="Required files not found")
+    
+    theta = np.load(str(theta_files[0]))
+    with open(topic_files[0]) as f:
+        topic_words = json.load(f)
+    
+    # Calculate topic proportions
+    topic_proportions = theta.mean(axis=0)
+    
+    # Build response
+    topics = []
+    for topic_id, words in topic_words.items():
+        topic_idx = int(topic_id)
+        keywords = [{"word": w, "weight": float(p)} for w, p in words[:top_k]]
+        
+        topics.append({
+            "id": topic_idx,
+            "name": f"Topic {topic_idx}",  # Can be replaced with LLM-generated name
+            "keywords": keywords,
+            "proportion": float(topic_proportions[topic_idx]),
+            "document_count": int((theta.argmax(axis=1) == topic_idx).sum()),
+            "wordcloud_path": f"topic_words_{dataset}_{mode}_topic{topic_idx}.png"
+        })
+    
+    # Sort by proportion
+    topics.sort(key=lambda x: x["proportion"], reverse=True)
+    
+    return {
+        "topics": topics,
+        "total_documents": len(theta),
+        "num_topics": len(topics)
+    }
 
 
 @router.post("/tasks", response_model=TaskResponse, tags=["tasks"])
