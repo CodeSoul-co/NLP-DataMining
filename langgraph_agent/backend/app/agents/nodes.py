@@ -530,12 +530,20 @@ async def visualization_node(state: AgentState, callback: Optional[Callable] = N
     """
     Node 5: Visualizer
     Generates topic visualizations and reports
+    
+    Includes:
+    - Tab 1: Topic overview (word clouds, proportions)
+    - Tab 2: Temporal analysis (document volume, topic evolution)
+    - Tab 3: Sankey diagram (topic flow over time)
+    - Tab 4: Dimension heatmap (topic distribution by region/category)
     """
     step_name = "visualization"
     logger.info(f"[{state['task_id']}] Generating visualizations...")
     
     try:
         from visualization.topic_visualizer import TopicVisualizer, load_etm_results, generate_pyldavis_visualization
+        from visualization.temporal_analysis import TemporalTopicAnalyzer
+        from visualization.dimension_analysis import DimensionAnalyzer
         
         dataset = state["dataset"]
         mode = state["mode"]
@@ -621,6 +629,92 @@ async def visualization_node(state: AgentState, callback: Optional[Callable] = N
             )
             visualization_paths.append(str(pyldavis_path))
         
+        # Tab 2 & 3: Temporal Analysis (if timestamps available)
+        if callback:
+            await callback(step_name, "in_progress", "Generating temporal analysis")
+        
+        temporal_data = None
+        data_dir = settings.DATA_DIR / dataset
+        csv_files = list(data_dir.glob("*.csv"))
+        
+        if csv_files:
+            import pandas as pd
+            try:
+                df = pd.read_csv(csv_files[0])
+                # Check for timestamp column
+                time_cols = [c for c in df.columns if any(t in c.lower() for t in ['time', 'date', 'year', '时间', '日期', '年份'])]
+                
+                if time_cols and len(df) == len(results['theta']):
+                    timestamps = df[time_cols[0]].values
+                    
+                    temporal_analyzer = TemporalTopicAnalyzer(
+                        theta=results['theta'],
+                        timestamps=timestamps,
+                        topic_words=results['topic_words'],
+                        output_dir=str(viz_dir)
+                    )
+                    
+                    # Tab 2 Chart A: Document volume
+                    temporal_analyzer.plot_document_volume(freq='M', filename=f"document_volume_{prefix}.png")
+                    visualization_paths.append(str(viz_dir / f"document_volume_{prefix}.png"))
+                    
+                    # Tab 2 Chart B: Topic evolution
+                    temporal_analyzer.plot_topic_evolution(time_bins=10, filename=f"topic_evolution_{prefix}.png")
+                    visualization_paths.append(str(viz_dir / f"topic_evolution_{prefix}.png"))
+                    
+                    temporal_analyzer.plot_topic_stacked_area(time_bins=10, filename=f"topic_stacked_area_{prefix}.png")
+                    visualization_paths.append(str(viz_dir / f"topic_stacked_area_{prefix}.png"))
+                    
+                    # Tab 3: Sankey diagram
+                    sankey_path = temporal_analyzer.plot_topic_sankey(num_periods=3, filename=f"topic_sankey_{prefix}.html")
+                    if sankey_path:
+                        visualization_paths.append(sankey_path)
+                    
+                    # Get frontend data
+                    temporal_data = temporal_analyzer.get_visualization_data_for_frontend()
+                    
+                    logger.info(f"Generated temporal analysis visualizations")
+                else:
+                    logger.info("No timestamp column found, skipping temporal analysis")
+            except Exception as e:
+                logger.warning(f"Could not generate temporal analysis: {e}")
+        
+        # Tab 4: Dimension Analysis (if dimension column available)
+        if callback:
+            await callback(step_name, "in_progress", "Generating dimension analysis")
+        
+        dimension_data = None
+        if csv_files:
+            try:
+                df = pd.read_csv(csv_files[0])
+                # Check for dimension column (region, province, category, etc.)
+                dim_cols = [c for c in df.columns if any(d in c.lower() for d in ['region', 'province', 'city', 'category', 'type', '省', '市', '地区', '类型', '部门'])]
+                
+                if dim_cols and len(df) == len(results['theta']):
+                    dimension_values = df[dim_cols[0]].values
+                    dimension_name = dim_cols[0]
+                    
+                    dim_analyzer = DimensionAnalyzer(
+                        theta=results['theta'],
+                        dimension_values=dimension_values,
+                        topic_words=results['topic_words'],
+                        dimension_name=dimension_name,
+                        output_dir=str(viz_dir)
+                    )
+                    
+                    # Tab 4: Dimension heatmap
+                    dim_analyzer.plot_dimension_heatmap(filename=f"dimension_heatmap_{prefix}.png")
+                    visualization_paths.append(str(viz_dir / f"dimension_heatmap_{prefix}.png"))
+                    
+                    # Get frontend data
+                    dimension_data = dim_analyzer.get_visualization_data_for_frontend()
+                    
+                    logger.info(f"Generated dimension analysis visualizations")
+                else:
+                    logger.info("No dimension column found, skipping dimension analysis")
+            except Exception as e:
+                logger.warning(f"Could not generate dimension analysis: {e}")
+        
         logger.info(f"Visualizations saved to {viz_dir}")
         
         if callback:
@@ -632,6 +726,8 @@ async def visualization_node(state: AgentState, callback: Optional[Callable] = N
             "visualization_completed": True,
             "visualization_dir": str(viz_dir),
             "visualization_paths": visualization_paths,
+            "temporal_data": temporal_data,
+            "dimension_data": dimension_data,
             "completed_at": datetime.now().isoformat(),
             **_add_log(state, step_name, "completed", f"Generated {len(visualization_paths)} visualizations")
         })
