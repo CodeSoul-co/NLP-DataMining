@@ -65,7 +65,7 @@ class BOWGenerator:
     
     def _tokenize(self, text: str) -> List[str]:
         """
-        Tokenize text (same as VocabBuilder).
+        Tokenize text (delegates to VocabBuilder's tokenizer for consistency).
         
         Args:
             text: Input text
@@ -73,24 +73,7 @@ class BOWGenerator:
         Returns:
             List of tokens
         """
-        if self.config.lowercase:
-            text = text.lower()
-        
-        tokens = re.findall(r'\b[a-zA-Z0-9äöüßÄÖÜ]+\b', text)
-        
-        filtered = []
-        for token in tokens:
-            if len(token) < self.config.min_word_length:
-                continue
-            if len(token) > self.config.max_word_length:
-                continue
-            if self.config.remove_numbers and token.isdigit():
-                continue
-            if self.config.remove_stopwords and token in self.stopwords:
-                continue
-            filtered.append(token)
-        
-        return filtered
+        return self.vocab._tokenize(text)
     
     def generate_bow(
         self,

@@ -12,3 +12,6 @@ networkx>=2.6.0
 wordcloud>=1.8.0
 pyLDAvis>=3.3.0
 gensim>=4.1.0
+faiss-cpu>=1.7.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0

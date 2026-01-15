@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THETA - ETM Topic Model Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .typing-dot { animation: typing 1.4s infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing { 0%, 60%, 100% { opacity: 0.3; } 30% { opacity: 1; } }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+    <div id="app" class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-slate-800 border-r border-slate-700 flex flex-col">
+            <div class="p-4 border-b border-slate-700">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-sky-500 to-sky-700 rounded-xl flex items-center justify-center text-xl font-bold">
+                        Θ
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold">THETA</h1>
+                        <p class="text-xs text-slate-400">ETM Agent System</p>
+                    </div>
+                </div>
+            </div>
+            <nav class="flex-1 p-4 space-y-1">
+                <a href="#" onclick="showPage('chat')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg bg-slate-700 text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                    <span>Chat</span>
+                </a>
+                <a href="#" onclick="showPage('data')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path></svg>
+                    <span>Data</span>
+                </a>
+                <a href="#" onclick="showPage('results')" class="nav-item flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:bg-slate-700 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    <span>Results</span>
+                </a>
+            </nav>
+            <div class="p-4 border-t border-slate-700">
+                <div class="p-3 bg-slate-700/50 rounded-lg">
+                    <div class="flex items-center gap-2 text-sm">
+                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span class="text-slate-300" id="gpu-status">GPU 1 Active</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col">
+            <!-- Header -->
+            <header class="h-16 bg-slate-800 border-b border-slate-700 flex items-center px-6">
+                <h2 class="text-lg font-semibold">Topic Model Agent</h2>
+                <div class="ml-auto flex items-center gap-2">
+                    <span id="connection-status" class="text-xs px-2 py-1 rounded bg-green-500/20 text-green-400">Connected</span>
+                </div>
+            </header>
+
+            <!-- Chat Page -->
+            <div id="page-chat" class="flex-1 flex flex-col">
+                <div id="messages" class="flex-1 overflow-auto p-6 space-y-4">
+                    <!-- Welcome -->
+                    <div id="welcome" class="flex flex-col items-center justify-center h-full text-center">
+                        <div class="w-24 h-24 mb-6 bg-gradient-to-br from-sky-500 to-sky-700 rounded-3xl flex items-center justify-center shadow-2xl shadow-sky-500/20 text-4xl font-bold">
+                            Θ
+                        </div>
+                        <h1 class="text-4xl font-bold mb-2">THETA</h1>
+                        <p class="text-slate-400 text-lg mb-8">ETM Topic Model Agent System</p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl">
+                            <button onclick="setInput('Train on socialTwitter')" class="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:border-sky-500 transition-colors text-left">
+                                <p class="font-medium">Train Model</p>
+                                <p class="text-sm text-slate-400">Train on socialTwitter</p>
+                            </button>
+                            <button onclick="setInput('Show datasets')" class="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:border-sky-500 transition-colors text-left">
+                                <p class="font-medium">View Data</p>
+                                <p class="text-sm text-slate-400">Show datasets</p>
+                            </button>
+                            <button onclick="setInput('Show results')" class="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:border-sky-500 transition-colors text-left">
+                                <p class="font-medium">View Results</p>
+                                <p class="text-sm text-slate-400">Show results</p>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input -->
+                <div class="p-4 border-t border-slate-700 bg-slate-800">
+                    <form id="chat-form" class="max-w-4xl mx-auto relative">
+                        <input type="text" id="chat-input" 
+                            class="w-full px-4 py-3 pr-12 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-sky-500"
+                            placeholder="Ask me to train a model, show results, or explore topics...">
+                        <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-sky-500 rounded-lg hover:bg-sky-600">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Data Page -->
+            <div id="page-data" class="flex-1 overflow-auto p-6 hidden">
+                <h2 class="text-2xl font-bold mb-2">Data</h2>
+                <p class="text-slate-400 mb-6">Available datasets</p>
+                <div id="datasets-list" class="grid gap-4">
+                    <div class="text-slate-400">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Results Page -->
+            <div id="page-results" class="flex-1 overflow-auto p-6 hidden">
+                <h2 class="text-2xl font-bold mb-2">Results</h2>
+                <p class="text-slate-400 mb-6">Training results and metrics</p>
+                <div id="results-list" class="grid gap-4">
+                    <div class="text-slate-400">Loading...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let ws = null;
+        let currentTaskId = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+            loadHealth();
+            
+            document.getElementById('chat-form').addEventListener('submit', handleSubmit);
+        });
+
+        function connectWebSocket() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/api/ws`);
+            
+            ws.onopen = () => {
+                document.getElementById('connection-status').textContent = 'Connected';
+                document.getElementById('connection-status').className = 'text-xs px-2 py-1 rounded bg-green-500/20 text-green-400';
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWSMessage(data);
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('connection-status').textContent = 'Disconnected';
+                document.getElementById('connection-status').className = 'text-xs px-2 py-1 rounded bg-red-500/20 text-red-400';
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function handleWSMessage(data) {
+            if (data.type === 'step_update') {
+                addMessage('system', `[${data.step}] ${data.message}`);
+            } else if (data.type === 'task_complete') {
+                addMessage('assistant', `Task completed! Metrics: ${JSON.stringify(data.metrics, null, 2)}`);
+            } else if (data.type === 'error') {
+                addMessage('system', `Error: ${data.message}`);
+            }
+        }
+
+        async function loadHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                const data = await res.json();
+                document.getElementById('gpu-status').textContent = data.gpu_available ? `GPU ${data.gpu_id} Active` : 'CPU Mode';
+            } catch (e) {
+                console.error('Health check failed:', e);
+            }
+        }
+
+        async function handleSubmit(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            input.value = '';
+            document.getElementById('welcome').classList.add('hidden');
+            addMessage('user', message);
+            
+            // Parse intent
+            const lowerMsg = message.toLowerCase();
+            
+            if (lowerMsg.includes('train')) {
+                const dataset = message.match(/train\s+(?:on\s+)?(\w+)/i)?.[1] || 'socialTwitter';
+                addMessage('assistant', `Starting training on ${dataset}...`);
+                await startTraining(dataset);
+            } else if (lowerMsg.includes('dataset') || lowerMsg.includes('data')) {
+                await showDatasets();
+            } else if (lowerMsg.includes('result')) {
+                await showResults();
+            } else {
+                addMessage('assistant', `I can help you with:\n- Train on [dataset] - Start training\n- Show datasets - List available data\n- Show results - View training results`);
+            }
+        }
+
+        async function startTraining(dataset) {
+            try {
+                const res = await fetch(`${API_BASE}/tasks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        dataset: dataset,
+                        mode: 'zero_shot',
+                        num_topics: 20,
+                        epochs: 50
+                    })
+                });
+                const data = await res.json();
+                currentTaskId = data.task_id;
+                addMessage('system', `Task created: ${data.task_id}`);
+                
+                // Subscribe to updates
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'subscribe', task_id: data.task_id }));
+                }
+            } catch (e) {
+                addMessage('system', `Error: ${e.message}`);
+            }
+        }
+
+        async function showDatasets() {
+            try {
+                const res = await fetch(`${API_BASE}/datasets`);
+                const datasets = await res.json();
+                
+                if (datasets.length === 0) {
+                    addMessage('assistant', 'No datasets found.');
+                } else {
+                    let msg = 'Available datasets:\n';
+                    datasets.forEach(d => {
+                        msg += `- **${d.name}**: ${d.size || 'N/A'} documents\n`;
+                    });
+                    addMessage('assistant', msg);
+                }
+            } catch (e) {
+                addMessage('system', `Error loading datasets: ${e.message}`);
+            }
+        }
+
+        async function showResults() {
+            try {
+                const res = await fetch(`${API_BASE}/results`);
+                const results = await res.json();
+                
+                if (results.length === 0) {
+                    addMessage('assistant', 'No results found. Train a model first!');
+                } else {
+                    let msg = 'Training results:\n';
+                    results.forEach(r => {
+                        msg += `- **${r.dataset}/${r.mode}**: `;
+                        if (r.metrics) {
+                            msg += `Coherence: ${r.metrics.topic_coherence_avg?.toFixed(4) || 'N/A'}`;
+                        }
+                        msg += '\n';
+                    });
+                    addMessage('assistant', msg);
+                }
+            } catch (e) {
+                addMessage('system', `Error loading results: ${e.message}`);
+            }
+        }
+
+        function addMessage(role, content) {
+            const container = document.getElementById('messages');
+            const welcome = document.getElementById('welcome');
+            if (welcome) welcome.classList.add('hidden');
+            
+            const div = document.createElement('div');
+            div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = role === 'user' 
+                ? 'max-w-[80%] bg-sky-600 text-white rounded-2xl px-4 py-3'
+                : role === 'system'
+                ? 'max-w-[80%] bg-slate-700 text-slate-300 rounded-2xl px-4 py-3 text-sm'
+                : 'max-w-[80%] bg-slate-800 border border-slate-700 text-white rounded-2xl px-4 py-3';
+            
+            bubble.innerHTML = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+            div.appendChild(bubble);
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function setInput(text) {
+            document.getElementById('chat-input').value = text;
+            document.getElementById('chat-input').focus();
+        }
+
+        function showPage(page) {
+            document.querySelectorAll('[id^="page-"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`page-${page}`).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('bg-slate-700', 'text-white');
+                el.classList.add('text-slate-400');
+            });
+            event.target.closest('.nav-item').classList.add('bg-slate-700', 'text-white');
+            event.target.closest('.nav-item').classList.remove('text-slate-400');
+            
+            if (page === 'data') loadDatasetsPage();
+            if (page === 'results') loadResultsPage();
+        }
+
+        async function loadDatasetsPage() {
+            const container = document.getElementById('datasets-list');
+            try {
+                const res = await fetch(`${API_BASE}/datasets`);
+                const datasets = await res.json();
+                
+                if (datasets.length === 0) {
+                    container.innerHTML = '<div class="text-slate-400">No datasets found</div>';
+                } else {
+                    container.innerHTML = datasets.map(d => `
+                        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                            <h3 class="font-medium text-white">${d.name}</h3>
+                            <p class="text-sm text-slate-400">${d.size || 'N/A'} documents</p>
+                            <p class="text-xs text-slate-500 mt-2">${d.path}</p>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                container.innerHTML = `<div class="text-red-400">Error: ${e.message}</div>`;
+            }
+        }
+
+        async function loadResultsPage() {
+            const container = document.getElementById('results-list');
+            try {
+                const res = await fetch(`${API_BASE}/results`);
+                const results = await res.json();
+                
+                if (results.length === 0) {
+                    container.innerHTML = '<div class="text-slate-400">No results yet. Train a model first!</div>';
+                } else {
+                    container.innerHTML = results.map(r => `
+                        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                            <h3 class="font-medium text-white">${r.dataset} / ${r.mode}</h3>
+                            <div class="grid grid-cols-2 gap-4 mt-3">
+                                <div class="bg-slate-700/50 rounded-lg p-3">
+                                    <p class="text-xs text-slate-400">Coherence</p>
+                                    <p class="text-lg font-semibold">${r.metrics?.topic_coherence_avg?.toFixed(4) || 'N/A'}</p>
+                                </div>
+                                <div class="bg-slate-700/50 rounded-lg p-3">
+                                    <p class="text-xs text-slate-400">Diversity</p>
+                                    <p class="text-lg font-semibold">${r.metrics?.topic_diversity_td?.toFixed(4) || 'N/A'}</p>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                container.innerHTML = `<div class="text-red-400">Error: ${e.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

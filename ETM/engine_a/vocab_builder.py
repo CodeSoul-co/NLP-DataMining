@@ -16,6 +16,12 @@ from dataclasses import dataclass, asdict
 import numpy as np
 from tqdm import tqdm
 
+try:
+    import jieba
+    JIEBA_AVAILABLE = True
+except ImportError:
+    JIEBA_AVAILABLE = False
+
 
 @dataclass
 class VocabConfig:
@@ -23,15 +29,17 @@ class VocabConfig:
     min_df: int = 5                    # Minimum document frequency
     max_df_ratio: float = 0.7          # Maximum document frequency ratio
     max_vocab_size: int = 50000        # Maximum vocabulary size
-    min_word_length: int = 2           # Minimum word length
+    min_word_length: int = 2           # Minimum word length (for English)
+    min_chinese_length: int = 1        # Minimum word length (for Chinese)
     max_word_length: int = 50          # Maximum word length
     lowercase: bool = True             # Convert to lowercase
     remove_numbers: bool = False       # Remove pure numbers
     remove_stopwords: bool = True      # Remove stopwords
-    language: str = "multi"            # Language for stopwords
+    language: str = "multi"            # Language: 'en', 'de', 'zh', 'multi'
     # Language-specific vocab limits to prevent imbalance
     en_vocab_limit: int = 10000        # Max English words
     de_vocab_limit: int = 3000         # Max German words
+    zh_vocab_limit: int = 10000        # Max Chinese words
     balanced_sampling: bool = True     # Balance vocab across languages
 
 
@@ -102,6 +110,24 @@ class VocabBuilder:
         'trotz', 'wahrend', 'herr', 'frau', 'dame', 'herren', 'damen'
     }
     
+    # Chinese stopwords
+    CHINESE_STOPWORDS = {
+        '的', '了', '是', '在', '我', '有', '和', '就', '不', '人', '都', '一',
+        '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着',
+        '没有', '看', '好', '自己', '这', '那', '她', '他', '它', '们', '这个',
+        '那个', '什么', '怎么', '为什么', '哪', '哪里', '谁', '多少', '几',
+        '能', '可以', '应该', '必须', '得', '把', '被', '让', '给', '对',
+        '从', '向', '往', '跟', '比', '在于', '关于', '对于', '由于', '因为',
+        '所以', '但是', '然而', '而且', '并且', '或者', '如果', '虽然', '即使',
+        '只要', '只有', '除非', '无论', '不管', '还是', '而是', '不是', '就是',
+        '这样', '那样', '怎样', '如何', '为何', '何时', '何地', '之', '其',
+        '或', '与', '及', '等', '等等', '以', '以及', '而', '且', '但', '却',
+        '又', '再', '还', '已', '已经', '正在', '将', '将要', '曾', '曾经',
+        '吗', '呢', '吧', '啊', '呀', '哦', '嗯', '哈', '嘿', '喂', '哎',
+        '这些', '那些', '某', '某些', '每', '各', '任何', '所有', '一些',
+        '有些', '没', '无', '非', '未', '别', '请', '让', '使', '令'
+    }
+    
     def __init__(self, config: Optional[VocabConfig] = None, dev_mode: bool = False):
         """
         Initialize vocabulary builder.
@@ -117,6 +143,8 @@ class VocabBuilder:
         self.stopwords = self.ENGLISH_STOPWORDS.copy()
         if self.config.language in ['de', 'multi']:
             self.stopwords.update(self.GERMAN_STOPWORDS)
+        if self.config.language in ['zh', 'multi']:
+            self.stopwords.update(self.CHINESE_STOPWORDS)
         
         # Vocabulary data
         self.word2idx: Dict[str, int] = {}
@@ -129,9 +157,17 @@ class VocabBuilder:
         if self.dev_mode:
             print(f"[DEV] VocabBuilder initialized with config: {asdict(self.config)}")
     
+    def _is_chinese(self, char: str) -> bool:
+        """Check if a character is Chinese."""
+        return '\u4e00' <= char <= '\u9fff'
+    
+    def _has_chinese(self, text: str) -> bool:
+        """Check if text contains Chinese characters."""
+        return any(self._is_chinese(c) for c in text)
+    
     def _tokenize(self, text: str) -> List[str]:
         """
-        Tokenize text into words.
+        Tokenize text into words. Supports English, German, and Chinese.
         
         Args:
             text: Input text
@@ -142,15 +178,42 @@ class VocabBuilder:
         if self.config.lowercase:
             text = text.lower()
         
-        # Simple tokenization: split on non-alphanumeric characters
-        tokens = re.findall(r'\b[a-zA-Z0-9äöüßÄÖÜ]+\b', text)
+        tokens = []
+        
+        # Check if text contains Chinese
+        if self._has_chinese(text) and self.config.language in ['zh', 'multi']:
+            if JIEBA_AVAILABLE:
+                # Use jieba for Chinese text
+                chinese_tokens = list(jieba.cut(text))
+                tokens.extend(chinese_tokens)
+            else:
+                # Fallback: character-level tokenization for Chinese
+                for char in text:
+                    if self._is_chinese(char):
+                        tokens.append(char)
+        
+        # Also extract English/German words
+        english_tokens = re.findall(r'\b[a-zA-Z0-9äöüßÄÖÜ]+\b', text)
+        tokens.extend(english_tokens)
         
         # Filter tokens
         filtered = []
         for token in tokens:
-            # Length filter
-            if len(token) < self.config.min_word_length:
+            token = token.strip()
+            if not token:
                 continue
+            
+            # Check if token is Chinese
+            is_chinese_token = self._has_chinese(token)
+            
+            # Length filter (different for Chinese and English)
+            if is_chinese_token:
+                if len(token) < self.config.min_chinese_length:
+                    continue
+            else:
+                if len(token) < self.config.min_word_length:
+                    continue
+            
             if len(token) > self.config.max_word_length:
                 continue
             
