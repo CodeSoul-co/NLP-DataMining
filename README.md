@@ -366,14 +366,23 @@ Recommended baselines for comparison:
   - Agent framework has been uploaded to GitHub
   - Planning to integrate Agent with the entire Pipeline tomorrow
 
-- 🔄 **Frontend Page Enhancement** `In Progress: 李国正` `Date: Today`
-  - Determined and implemented frontend basic framework
-  - Tested file upload tool and wrote backend calling methods
-  - Focused optimization on analytics, rag, and setup pages
-  - Integrated API data loading and error handling
-  - Updated layout configuration
-  - Added new dependencies
-  - Compiled backend implementation checklist (including API specifications and to-do items)
+- 🔄 **Visualization System Enhancement** `In Progress: 李芳痕` `Date: Today`
+  - Aligned with product requirements: total trend charts, temporal analysis integration into pipeline, Sankey diagrams, and dimension heatmaps have been incorporated into the visualization system
+  - Aligned with topic model outputs: visualization improvements extended to CTM (Contextual Topic Model), approximately 2/3 remaining, expected to complete tomorrow
+
+- 🔄 **ETM Model Training Optimization** `In Progress: pjq` `Date: Today`
+  - ETM model training on socialTwitter and mentalhealth datasets with zero_shot mode
+  - Model training results are unsatisfactory, currently adjusting parameters and strategies
+
+- 🔄 **Competitive Analysis** `In Progress: 吴凡` `Date: Today`
+  - Comparing competitor pricing strategies
+  - Analyzing pricing points and pricing strategies
+
+- 🔄 **Frontend Feature Enhancement** `In Progress: 李国正` `Date: Today`
+  - Redesigned frontend layout based on actual requirements with progressive logic
+  - Added vectorization module before data cleaning and model analysis
+  - Added task progress bars, integrated with actual backend APIs (awaiting ETM environment testing)
+  - Optimized UI details, including animation loading, AI assistant collapse, etc.
 
 ---
 

@@ -311,14 +311,23 @@ python -m theta.run --config configs/default.yaml
   - Agent 框架已上传到 GitHub
   - 计划明天尝试将 Agent 和整个 Pipeline 整合串起来
 
-- 🔄 **前端页面功能完善** `In Progress: 李国正` `Date: 今日`
-  - 确定前端基本框架并实现
-  - 测试文件上传工具并编写后端调用方法
-  - 重点优化 analytics、rag、setup 页面
-  - 集成 API 数据加载与错误处理
-  - 更新 layout 配置
-  - 新增依赖包
-  - 编写后端实现清单（包含接口规范、待办内容等）
+- 🔄 **可视化体系完善** `In Progress: 李芳痕` `Date: 今日`
+  - 对标产品需求文档：总量趋势图、集成时序分析到 pipeline、桑基图、维度热力图均已纳入可视化体系
+  - 对标主题模型输出：可视图完善至 CTM 上下文主题模型，剩余 2/3 大致明天结束
+
+- 🔄 **ETM 模型训练优化** `In Progress: pjq` `Date: 今日`
+  - ETM 模型在 socialTwitter、mentalhealth 数据集 zero_shot 训练
+  - 模型训练结果不理想，正在调整参数和策略
+
+- 🔄 **竞品分析** `In Progress: 吴凡` `Date: 今日`
+  - 比对竞品的收费策略
+  - 分析收费点和收费策略
+
+- 🔄 **前端功能完善** `In Progress: 李国正` `Date: 今日`
+  - 前端布局按实际需求重新设计，采用渐进式逻辑
+  - 在数据清洗和模型分析前加入向量化模块
+  - 增加任务进度条，接入实际的后端接口（等待 ETM 环境测试）
+  - 优化 UI 细节，例如动画加载、AI 助手收纳等问题
 
 ---
 
