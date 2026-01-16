@@ -62,13 +62,23 @@ class Settings(BaseSettings):
     GPU_ID: int = 0  # 使用 GPU 0
     DEVICE: str = "cuda"
     
-    # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-    ]
+    # CORS - 支持从环境变量读取，逗号分隔
+    CORS_ORIGINS: List[str] = Field(
+        default=[
+            "http://localhost:3000", 
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+        ],
+        description="Allowed CORS origins (comma-separated in env var)"
+    )
+    
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Parse CORS origins from environment variable"""
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
     
     # WebSocket
     WS_HEARTBEAT_INTERVAL: int = 30

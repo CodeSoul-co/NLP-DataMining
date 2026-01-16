@@ -1,0 +1,9 @@
+# Railway 配置文件 - THETA 项目
+# 这是一个 monorepo 项目，包含多个服务
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
