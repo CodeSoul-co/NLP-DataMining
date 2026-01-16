@@ -290,6 +290,129 @@ class DimensionAnalyzer:
         plt.tight_layout()
         return self._save_or_show(fig, filename)
     
+    def plot_covariate_effect(
+        self,
+        category_a: str,
+        category_b: str,
+        filename: Optional[str] = None,
+        title: str = None
+    ) -> plt.Figure:
+        """
+        Plot covariate effect diagram (like 图6 协变量效应图).
+        
+        Shows topic preference between two categories. Each point is a topic,
+        x-axis is the effect size (positive = prefer category_b, negative = prefer category_a).
+        
+        Args:
+            category_a: First category name (left side, negative effect)
+            category_b: Second category name (right side, positive effect)
+            filename: Output filename
+            title: Plot title
+            
+        Returns:
+            Figure
+        """
+        # Compute topic distribution for each category
+        dim_dist = self.compute_dimension_topic_distribution('mean')
+        
+        if category_a not in dim_dist.index or category_b not in dim_dist.index:
+            available = dim_dist.index.tolist()
+            logger.warning(f"Categories not found. Available: {available}")
+            return None
+        
+        # Calculate effect size for each topic
+        effects = []
+        topic_labels = []
+        
+        for k in range(self.num_topics):
+            topic_col = f'topic_{k}'
+            if topic_col in dim_dist.columns:
+                prop_a = dim_dist.loc[category_a, topic_col]
+                prop_b = dim_dist.loc[category_b, topic_col]
+                effect = prop_b - prop_a  # Positive = prefer B, Negative = prefer A
+                effects.append(effect)
+                topic_labels.append(f'Topic{k + 1}')
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(10, 12), facecolor='white')
+        ax.set_facecolor('white')
+        
+        # Sort by effect size for better visualization
+        sorted_indices = np.argsort(effects)[::-1]
+        
+        # Y positions (spread topics vertically)
+        y_positions = np.linspace(0.95, 0.05, len(effects))
+        
+        # Plot each topic as a point
+        for i, idx in enumerate(sorted_indices):
+            x = effects[idx]
+            y = y_positions[i]
+            ax.scatter(x, y, c='black', s=30, zorder=5)
+            ax.annotate(topic_labels[idx], (x, y), 
+                       xytext=(5, 0), textcoords='offset points',
+                       fontsize=9, va='center')
+        
+        # Add vertical line at x=0
+        ax.axvline(x=0, color='gray', linestyle='--', linewidth=1, alpha=0.7)
+        
+        # Style
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.set_yticks([])
+        
+        # X-axis label
+        ax.set_xlabel(f'{category_a}……{category_b}', fontsize=12)
+        
+        # Set x limits symmetrically
+        max_effect = max(abs(min(effects)), abs(max(effects)))
+        ax.set_xlim(-max_effect * 1.2, max_effect * 1.2)
+        
+        # Title
+        if title is None:
+            title = f'图6  {category_a}/{category_b}主题偏好'
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=0.02)
+        
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.12)
+        return self._save_or_show(fig, filename)
+    
+    def compute_covariate_effects(
+        self,
+        category_a: str,
+        category_b: str
+    ) -> pd.DataFrame:
+        """
+        Compute covariate effects for all topics between two categories.
+        
+        Args:
+            category_a: First category
+            category_b: Second category
+            
+        Returns:
+            DataFrame with topic effects
+        """
+        dim_dist = self.compute_dimension_topic_distribution('mean')
+        
+        results = []
+        for k in range(self.num_topics):
+            topic_col = f'topic_{k}'
+            if topic_col in dim_dist.columns:
+                prop_a = dim_dist.loc[category_a, topic_col] if category_a in dim_dist.index else 0
+                prop_b = dim_dist.loc[category_b, topic_col] if category_b in dim_dist.index else 0
+                effect = prop_b - prop_a
+                
+                results.append({
+                    'topic': k,
+                    'topic_label': f'Topic{k + 1}',
+                    f'{category_a}_proportion': prop_a,
+                    f'{category_b}_proportion': prop_b,
+                    'effect': effect,
+                    'preference': category_b if effect > 0 else category_a
+                })
+        
+        return pd.DataFrame(results).sort_values('effect', ascending=False)
+    
     def get_visualization_data_for_frontend(
         self,
         top_k_topics: int = 10,
@@ -341,6 +464,206 @@ class DimensionAnalyzer:
             'heatmap_data': heatmap_data,
             'dimension_stats': dim_stats
         }
+    
+    def plot_multi_domain_temporal(
+        self,
+        timestamps: np.ndarray,
+        freq: str = 'W',
+        top_k_domains: int = 5,
+        metric: str = 'count',
+        filename: Optional[str] = None,
+        title: str = None
+    ) -> plt.Figure:
+        """
+        Plot multi-domain topic distribution over time (like 图4).
+        
+        Creates a line chart comparing topic counts/strength across different
+        domains (dimensions) over time periods.
+        
+        Args:
+            timestamps: Array of timestamps for each document
+            freq: Time frequency ('W'=week, 'M'=month, 'Q'=quarter, 'Y'=year)
+            top_k_domains: Number of top domains to show
+            metric: 'count' for topic count, 'strength' for average topic strength
+            filename: Output filename
+            title: Custom title
+            
+        Returns:
+            Figure
+        """
+        # Create DataFrame with timestamps and dimensions
+        df = pd.DataFrame({
+            'timestamp': pd.to_datetime(timestamps),
+            'dimension': self.dimension_values,
+            **{f'topic_{k}': self.theta[:, k] for k in range(self.num_topics)}
+        })
+        
+        # Create time period column
+        df['period'] = df['timestamp'].dt.to_period(freq)
+        
+        # Get top domains by document count
+        domain_counts = df['dimension'].value_counts()
+        top_domains = domain_counts.nlargest(top_k_domains).index.tolist()
+        
+        # Filter to top domains
+        df_filtered = df[df['dimension'].isin(top_domains)]
+        
+        # Calculate metric per domain per period
+        topic_cols = [f'topic_{k}' for k in range(self.num_topics)]
+        
+        if metric == 'count':
+            # Count documents with dominant topic per domain per period
+            df_filtered['dominant_topic'] = df_filtered[topic_cols].idxmax(axis=1)
+            grouped = df_filtered.groupby(['period', 'dimension']).size().unstack(fill_value=0)
+        else:
+            # Average topic strength per domain per period
+            grouped = df_filtered.groupby(['period', 'dimension'])[topic_cols].mean().sum(axis=1).unstack(fill_value=0)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 7), facecolor='white')
+        ax.set_facecolor('white')
+        
+        # Markers and colors for different domains
+        markers = ['^', 'd', 's', 'o', 'v', 'p', 'h', '*', 'X', 'P']
+        colors = ['#333333', '#666666', '#999999', '#CCCCCC', '#444444',
+                  '#555555', '#777777', '#888888', '#AAAAAA', '#BBBBBB']
+        
+        # Plot each domain
+        x_values = range(len(grouped.index))
+        for i, domain in enumerate(top_domains):
+            if domain in grouped.columns:
+                marker = markers[i % len(markers)]
+                color = colors[i % len(colors)]
+                
+                ax.plot(x_values, grouped[domain].values,
+                       marker=marker, linewidth=1.5, markersize=8,
+                       color=color, label=domain, markerfacecolor='white',
+                       markeredgecolor=color, markeredgewidth=1.5)
+        
+        # Style the plot
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('#808080')
+        ax.spines['bottom'].set_color('#808080')
+        
+        # X-axis labels
+        x_labels = [str(p) for p in grouped.index]
+        ax.set_xticks(x_values)
+        ax.set_xticklabels(x_labels, fontsize=9, rotation=45 if len(x_labels) > 10 else 0)
+        
+        # Check if Chinese data
+        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in str(top_domains[0])) if top_domains else False
+        
+        ax.set_xlabel('日期/周' if is_chinese else 'Date/Week', fontsize=11)
+        y_label = '主题个数' if metric == 'count' else '主题强度'
+        ax.set_ylabel(y_label if is_chinese else ('Topic Count' if metric == 'count' else 'Topic Strength'), fontsize=11)
+        
+        # Grid
+        ax.yaxis.grid(True, alpha=0.3, linestyle='-', color='#CCCCCC')
+        ax.xaxis.grid(False)
+        
+        # Legend at top
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.12),
+                 ncol=min(5, top_k_domains), fontsize=10, frameon=True,
+                 framealpha=0.9)
+        
+        # Title
+        if title is None:
+            title = '各领域主题数分布' if is_chinese else 'Topic Distribution by Domain'
+        ax.set_title(title, fontsize=14, fontweight='bold', pad=40)
+        
+        plt.tight_layout()
+        return self._save_or_show(fig, filename)
+    
+    def plot_domain_topic_comparison(
+        self,
+        timestamps: np.ndarray,
+        topic_idx: int = None,
+        freq: str = 'W',
+        top_k_domains: int = 5,
+        filename: Optional[str] = None,
+        title: str = None
+    ) -> plt.Figure:
+        """
+        Plot specific topic strength comparison across domains over time.
+        
+        Args:
+            timestamps: Array of timestamps for each document
+            topic_idx: Specific topic to analyze (None for overall)
+            freq: Time frequency
+            top_k_domains: Number of top domains to show
+            filename: Output filename
+            title: Custom title
+            
+        Returns:
+            Figure
+        """
+        df = pd.DataFrame({
+            'timestamp': pd.to_datetime(timestamps),
+            'dimension': self.dimension_values,
+            **{f'topic_{k}': self.theta[:, k] for k in range(self.num_topics)}
+        })
+        
+        df['period'] = df['timestamp'].dt.to_period(freq)
+        
+        # Get top domains
+        domain_counts = df['dimension'].value_counts()
+        top_domains = domain_counts.nlargest(top_k_domains).index.tolist()
+        df_filtered = df[df['dimension'].isin(top_domains)]
+        
+        # Calculate topic strength per domain per period
+        if topic_idx is not None:
+            topic_col = f'topic_{topic_idx}'
+            grouped = df_filtered.groupby(['period', 'dimension'])[topic_col].mean().unstack(fill_value=0)
+        else:
+            # Average of all topics
+            topic_cols = [f'topic_{k}' for k in range(self.num_topics)]
+            grouped = df_filtered.groupby(['period', 'dimension'])[topic_cols].mean().mean(axis=1).unstack(fill_value=0)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 7), facecolor='white')
+        ax.set_facecolor('white')
+        
+        # Color palette
+        colors = ['#E74C3C', '#3498DB', '#2ECC71', '#9B59B6', '#F39C12',
+                  '#1ABC9C', '#E91E63', '#00BCD4', '#8BC34A', '#FF5722']
+        markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'X', 'P']
+        
+        x_values = range(len(grouped.index))
+        for i, domain in enumerate(top_domains):
+            if domain in grouped.columns:
+                ax.plot(x_values, grouped[domain].values,
+                       marker=markers[i % len(markers)], linewidth=2, markersize=8,
+                       color=colors[i % len(colors)], label=domain, alpha=0.9)
+        
+        # Style
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        
+        x_labels = [str(p) for p in grouped.index]
+        ax.set_xticks(x_values)
+        ax.set_xticklabels(x_labels, fontsize=9)
+        
+        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in str(top_domains[0])) if top_domains else False
+        
+        ax.set_xlabel('时间段' if is_chinese else 'Time Period', fontsize=11)
+        ax.set_ylabel('主题强度' if is_chinese else 'Topic Strength', fontsize=11)
+        
+        ax.yaxis.grid(True, alpha=0.3, linestyle='-', color='#CCCCCC')
+        
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1),
+                 ncol=min(5, top_k_domains), fontsize=10, frameon=False)
+        
+        if title is None:
+            if topic_idx is not None:
+                topic_label = self._get_topic_label(topic_idx)
+                title = f'{topic_label} - 各领域对比' if is_chinese else f'{topic_label} - Domain Comparison'
+            else:
+                title = '各领域主题强度对比' if is_chinese else 'Topic Strength by Domain'
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        
+        plt.tight_layout()
+        return self._save_or_show(fig, filename)
     
     def generate_dimension_report(
         self,
