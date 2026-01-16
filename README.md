@@ -367,22 +367,23 @@ Recommended baselines for comparison:
   - Planning to integrate Agent with the entire Pipeline tomorrow
 
 - 🔄 **Visualization System Enhancement** `In Progress: 李芳痕` `Date: Today`
-  - Aligned with product requirements: total trend charts, temporal analysis integration into pipeline, Sankey diagrams, and dimension heatmaps have been incorporated into the visualization system
-  - Aligned with topic model outputs: visualization improvements extended to CTM (Contextual Topic Model), approximately 2/3 remaining, expected to complete tomorrow
+  - Visualization section initially completed, will optimize individual charts tomorrow
 
-- 🔄 **ETM Model Training Optimization** `In Progress: pjq` `Date: Today`
-  - ETM model training on socialTwitter and mentalhealth datasets with zero_shot mode
-  - Model training results are unsatisfactory, currently adjusting parameters and strategies
+- 🔄 **ETM Model Training** `In Progress: pjq` `Date: Today`
+  - Zero_shot training completed on five datasets with good results
+  - Project bash scripts have been organized
+  - Unsupervised embedding not yet completed, supervised embedding is currently training and results will be available soon
 
-- 🔄 **Competitive Analysis** `In Progress: 吴凡` `Date: Today`
-  - Comparing competitor pricing strategies
-  - Analyzing pricing points and pricing strategies
+- 🔄 **Pricing Strategy Development** `In Progress: 吴凡` `Date: Today`
+  - Systematically developed pricing strategy based on yesterday's core pricing points
+  - Analyzed user personas, pain points, and positioning for each version
+  - Summarized pros and cons of two pricing schemes for final discussion after cost accounting
 
-- 🔄 **Frontend Feature Enhancement** `In Progress: 李国正` `Date: Today`
-  - Redesigned frontend layout based on actual requirements with progressive logic
-  - Added vectorization module before data cleaning and model analysis
-  - Added task progress bars, integrated with actual backend APIs (awaiting ETM environment testing)
-  - Optimized UI details, including animation loading, AI assistant collapse, etc.
+- 🔄 **Frontend Deployment & Optimization** `In Progress: 李国正` `Date: Today`
+  - Deployed to Tencent Cloud Server 🌐
+  - Frontend Interface: [http://liguozheng.site:3002](http://liguozheng.site:3002)
+  - Backend API Docs: [http://liguozheng.site:8000/docs](http://liguozheng.site:8000/docs)
+  - DataClean API: [http://liguozheng.site:8001/health](http://liguozheng.site:8001/health)
 
 ---
 

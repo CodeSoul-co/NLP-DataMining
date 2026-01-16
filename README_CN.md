@@ -312,22 +312,23 @@ python -m theta.run --config configs/default.yaml
   - 计划明天尝试将 Agent 和整个 Pipeline 整合串起来
 
 - 🔄 **可视化体系完善** `In Progress: 李芳痕` `Date: 今日`
-  - 对标产品需求文档：总量趋势图、集成时序分析到 pipeline、桑基图、维度热力图均已纳入可视化体系
-  - 对标主题模型输出：可视图完善至 CTM 上下文主题模型，剩余 2/3 大致明天结束
+  - Visualization 部分初步完成，明天优化个别图表
 
-- 🔄 **ETM 模型训练优化** `In Progress: pjq` `Date: 今日`
-  - ETM 模型在 socialTwitter、mentalhealth 数据集 zero_shot 训练
-  - 模型训练结果不理想，正在调整参数和策略
+- 🔄 **ETM 模型训练** `In Progress: pjq` `Date: 今日`
+  - 五个数据集的 zero_shot 训练已完成，结果良好
+  - 整个项目的 bash 脚本已整理完成
+  - Unsupervised 的 embedding 尚未完成，supervised 的 embedding 正在训练中，很快将获得结果
 
-- 🔄 **竞品分析** `In Progress: 吴凡` `Date: 今日`
-  - 比对竞品的收费策略
-  - 分析收费点和收费策略
+- 🔄 **收费方案制定** `In Progress: 吴凡` `Date: 今日`
+  - 在昨天核心收费点的基础上系统制定了收费方案
+  - 分析了每个版本针对的用户画像、痛点和定位
+  - 总结出两个方案各自的优缺点，以便后续成本核算后最终讨论确定收费方案
 
-- 🔄 **前端功能完善** `In Progress: 李国正` `Date: 今日`
-  - 前端布局按实际需求重新设计，采用渐进式逻辑
-  - 在数据清洗和模型分析前加入向量化模块
-  - 增加任务进度条，接入实际的后端接口（等待 ETM 环境测试）
-  - 优化 UI 细节，例如动画加载、AI 助手收纳等问题
+- 🔄 **前端部署与优化** `In Progress: 李国正` `Date: 今日`
+  - 已部署到腾讯云服务器 🌐
+  - 前端界面: [http://liguozheng.site:3002](http://liguozheng.site:3002)
+  - 后端 API 文档: [http://liguozheng.site:8000/docs](http://liguozheng.site:8000/docs)
+  - DataClean API: [http://liguozheng.site:8001/health](http://liguozheng.site:8001/health)
 
 ---
 
