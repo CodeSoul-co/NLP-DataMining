@@ -1,14 +1,10 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
-const inter = Inter({ 
-  subsets: ["latin"],
-  display: "swap",
-  fallback: ["system-ui", "arial"]
-})
+// 使用 CSS 变量定义字体，避免构建时访问 Google Fonts
+const fontClassName = "font-sans"
 
 export const metadata: Metadata = {
   title: "THETA 智能分析平台",
@@ -40,7 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className={`${inter.className} antialiased`}>
+      <body className={`${fontClassName} antialiased`}>
         {children}
         <Analytics />
       </body>

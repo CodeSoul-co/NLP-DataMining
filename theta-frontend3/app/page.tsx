@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { Suspense } from "react"
 
 import { useState, useCallback, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -170,7 +171,8 @@ const mockDatasets: Dataset[] = [
 
 // 图表数据已移动到独立页面
 
-export default function Home() {
+// 主页面内容组件
+function HomeContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
@@ -3064,5 +3066,22 @@ function UserDropdown() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+
+// 使用 Suspense 包装以支持 useSearchParams
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-500">加载中...</p>
+        </div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   )
 }

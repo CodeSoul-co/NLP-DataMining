@@ -5,9 +5,9 @@ Centralized settings for the THETA Agent System
 
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 
 
 def get_project_root() -> Path:
@@ -63,16 +63,12 @@ class Settings(BaseSettings):
     DEVICE: str = "cuda"
     
     # CORS - 支持从环境变量读取，逗号分隔
-    CORS_ORIGINS: List[str] = Field(
-        default=[
-            "http://localhost:3000", 
-            "http://127.0.0.1:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:3001",
-        ],
-        description="Allowed CORS origins (comma-separated in env var)"
+    CORS_ORIGINS: Union[str, List[str]] = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
+        description="Allowed CORS origins (comma-separated string or list)"
     )
     
+    @field_validator('CORS_ORIGINS', mode='before')
     @classmethod
     def parse_cors_origins(cls, v):
         """Parse CORS origins from environment variable"""
