@@ -36,9 +36,23 @@ echo ""
 
 # 步骤 1: 拉取最新代码
 echo "📥 [1/4] 拉取最新代码..."
+
+# 配置 Git 默认行为（避免分支分歧提示）
+git config pull.rebase true 2>/dev/null || true
+
+# 获取当前分支名
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+
+# 拉取最新代码
 git fetch origin
-git pull origin main || git pull origin master || git pull
-echo "✅ 代码更新完成"
+if git pull --rebase origin $CURRENT_BRANCH 2>/dev/null; then
+    echo "✅ 代码更新完成（使用 rebase）"
+elif git pull origin $CURRENT_BRANCH 2>/dev/null; then
+    echo "✅ 代码更新完成（使用 merge）"
+else
+    echo "⚠️  Git pull 失败，继续使用当前代码"
+    echo "   提示: 如果遇到分支分歧，请手动执行: git pull --rebase"
+fi
 echo ""
 
 # 步骤 2: 检查 .env.frontend 文件

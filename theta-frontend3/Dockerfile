@@ -15,10 +15,11 @@ RUN pnpm install --frozen-lockfile
 # 复制配置文件
 COPY tsconfig.json next.config.mjs postcss.config.mjs components.json ./
 
-# 复制源代码目录（确保 lib 目录被包含）
+# 复制源代码目录（确保所有必要的目录都被包含）
 COPY app ./app
 COPY components ./components
 COPY lib ./lib
+COPY contexts ./contexts
 COPY public ./public
 COPY styles ./styles
 COPY hooks ./hooks
