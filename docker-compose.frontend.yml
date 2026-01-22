@@ -1,26 +1,6 @@
 version: '3.8'
 
 services:
-  # Nginx 反向代理（统一入口）
-  nginx:
-    image: nginx:alpine
-    container_name: theta-nginx
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/nginx.frontend.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - theta-frontend
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/nginx-health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - theta-network
-
   # THETA 前端（单独部署）
   theta-frontend:
     build:
@@ -30,9 +10,8 @@ services:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
         - NEXT_PUBLIC_DATACLEAN_API_URL=${NEXT_PUBLIC_DATACLEAN_API_URL:-http://localhost:8001}
     container_name: theta-frontend
-    # 移除对外端口映射，只在 Docker 网络内部暴露
-    expose:
-      - "3000"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
