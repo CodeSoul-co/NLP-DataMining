@@ -111,6 +111,7 @@ if [ -n "$PORT_IN_USE" ]; then
 else
     echo "✅ 端口 $FRONTEND_PORT 可用"
 fi
+fi
 echo ""
 
 # 步骤 4: 停止现有容器

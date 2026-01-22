@@ -1,19 +1,42 @@
 version: '3.8'
 
 services:
+  # Nginx 反向代理（统一入口）
+  nginx:
+    image: nginx:alpine
+    container_name: theta-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - theta-frontend
+      - etm-agent-api
+      - dataclean-api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/nginx-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - theta-network
+
   # ETM Agent API 后端（主后端）
   etm-agent-api:
     build:
       context: ./langgraph_agent/backend
       dockerfile: Dockerfile
     container_name: etm-agent-api
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    # 移除对外端口映射，只在 Docker 网络内部暴露
+    expose:
+      - "8000"
     environment:
       - QWEN_API_KEY=${QWEN_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY:-change-this-secret-key}
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./users.db}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
     volumes:
       - etm-data:/app/data
       - etm-result:/app/result
@@ -34,11 +57,12 @@ services:
       context: ./ETM/dataclean
       dockerfile: Dockerfile
     container_name: dataclean-api
-    ports:
-      - "${API_PORT:-8001}:8001"
+    # 移除对外端口映射，只在 Docker 网络内部暴露
+    expose:
+      - "8001"
     environment:
       - PORT=8001
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://localhost:80}
     volumes:
       - dataclean-uploads:/app/temp_uploads
       - dataclean-processed:/app/temp_processed
@@ -58,15 +82,18 @@ services:
       context: ./theta-frontend3
       dockerfile: Dockerfile
       args:
-        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        - NEXT_PUBLIC_DATACLEAN_API_URL=${NEXT_PUBLIC_DATACLEAN_API_URL:-http://localhost:8001}
+        # 通过 Nginx 反向代理访问 API，使用相对路径
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+        - NEXT_PUBLIC_DATACLEAN_API_URL=${NEXT_PUBLIC_DATACLEAN_API_URL:-/dataclean}
     container_name: theta-frontend
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+    # 移除对外端口映射，只在 Docker 网络内部暴露
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://etm-agent-api:8000
-      - NEXT_PUBLIC_DATACLEAN_API_URL=http://dataclean-api:8001
+      # 容器内部通信使用服务名
+      - NEXT_PUBLIC_API_URL=
+      - NEXT_PUBLIC_DATACLEAN_API_URL=/dataclean
     depends_on:
       etm-agent-api:
         condition: service_healthy
