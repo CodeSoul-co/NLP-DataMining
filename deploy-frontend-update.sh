@@ -79,12 +79,22 @@ echo ""
 
 # 步骤 3: 检查端口占用
 echo "🔍 [3/5] 检查端口占用..."
+
+# 检查是否使用 Nginx 反向代理架构
+if grep -q "nginx:" docker-compose.frontend.yml 2>/dev/null; then
+    echo "✅ 检测到 Nginx 反向代理架构，由 Nginx 容器管理端口 80"
+    SKIP_PORT_CHECK=true
+else
+    SKIP_PORT_CHECK=false
+fi
+
 FRONTEND_PORT=$(grep FRONTEND_PORT .env.frontend 2>/dev/null | cut -d '=' -f2 | tr -d ' ' || echo "80")
 if [ -z "$FRONTEND_PORT" ] || [ "$FRONTEND_PORT" = "" ]; then
     FRONTEND_PORT=80
 fi
 
-# 检查端口是否被占用
+# 检查端口是否被占用（如果不是 Nginx 架构）
+if [ "$SKIP_PORT_CHECK" = "false" ]; then
 if command -v netstat &> /dev/null; then
     PORT_IN_USE=$(sudo netstat -tlnp 2>/dev/null | grep ":$FRONTEND_PORT " || true)
 elif command -v ss &> /dev/null; then
