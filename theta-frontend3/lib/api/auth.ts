@@ -65,7 +65,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
     // 网络错误（连接失败、CORS、超时等）
     const errorMessage = error.message || 'Network error';
     if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-      throw new Error('无法连接到服务器。请检查网络连接和 SSH 端口转发是否正常运行。');
+      throw new Error('无法连接到服务器。请检查后端是否在本地运行（如 ./start.sh）及网络连接。');
     }
     throw error;
   }

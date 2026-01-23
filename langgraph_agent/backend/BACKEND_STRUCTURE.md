@@ -19,6 +19,7 @@ langgraph_agent/backend/
 │   │   ├── __init__.py
 │   │   ├── auth.py              # 认证路由 (登录、注册、用户管理)
 │   │   ├── routes.py            # 主路由 (数据集、任务、结果等)
+│   │   ├── oss.py               # OSS 接口 (presign、列举，来自 theta-backend 合并)
 │   │   ├── scripts.py           # 脚本执行相关路由
 │   │   └── websocket.py         # WebSocket 实时通信
 │   │
@@ -46,6 +47,7 @@ langgraph_agent/backend/
 │   │   ├── __init__.py
 │   │   ├── auth_service.py      # 认证服务 (JWT token 生成/验证)
 │   │   ├── chat_service.py      # 聊天服务 (Qwen API 集成)
+│   │   ├── oss_service.py       # OSS 服务 (presign、列举，来自 theta-backend 合并)
 │   │   └── script_service.py    # 脚本执行服务
 │   │
 │   └── static/                   # 静态文件
@@ -122,6 +124,12 @@ langgraph_agent/backend/
 - `GET /api/auth/verify` - 验证 token
 - `PUT /api/auth/profile` - 更新用户资料
 - `POST /api/auth/change-password` - 修改密码
+
+#### `oss.py` - OSS 接口（由 theta-backend 合并，可选）
+- **端点**:
+  - `POST /api/upload/presign` - 获取 OSS 直传预签名 URL（需登录，需配置 OSS）
+  - `GET /api/oss/datasets` - 列举当前用户在 OSS 下的数据集（需登录，需配置 OSS）
+- **配置**: `OSS_ACCESS_KEY_ID`, `OSS_ACCESS_KEY_SECRET`, `OSS_BUCKET_NAME`, `OSS_ENDPOINT`
 
 #### `websocket.py` - WebSocket 实时通信
 - **端点**: `/api/ws`

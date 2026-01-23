@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-创建测试用户脚本
-用于快速创建测试账号
+创建测试用户脚本（使用与后端相同的 SQLite：data/theta.db）
+用于快速创建测试账号。需先设置 SIMULATION_MODE=true。
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
-# 添加项目根目录到路径
+# 必须在本机 SQLite 模式下运行，且在任何 app 导入之前设置
+os.environ["SIMULATION_MODE"] = "true"
+
+# 添加路径
 project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "ETM"))
 sys.path.insert(0, str(project_root / "langgraph_agent" / "backend"))
 
 from app.models.user import user_db, User

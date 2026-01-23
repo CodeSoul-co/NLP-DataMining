@@ -120,7 +120,7 @@ export default function LoginPage() {
         errorMessage = err.message || errorMessage;
         // 如果是网络错误，提供更友好的提示
         if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch')) {
-          errorMessage = '无法连接到服务器，请检查后端服务是否运行';
+          errorMessage = '无法连接到服务器。请检查后端是否在本地运行（如 ./start.sh）。';
         } else if (errorMessage.includes('404')) {
           errorMessage = '登录接口不存在，请检查后端服务';
         } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') || errorMessage.includes('用户名或密码错误')) {

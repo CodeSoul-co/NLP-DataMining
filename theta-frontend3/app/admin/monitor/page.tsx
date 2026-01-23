@@ -82,7 +82,7 @@ export default function MonitorPage() {
         lastCheck: new Date().toISOString(),
         details: { 
           error: isTimeout ? '连接超时' : error.message || '连接失败',
-          hint: '请确保 SSH 端口转发已启动'
+          hint: '请确保后端在本地运行（如 ./start.sh 或 uvicorn）'
         },
       });
     }
@@ -443,32 +443,28 @@ export default function MonitorPage() {
             <div>
               <h3 className="font-semibold mb-2">前端服务</h3>
               <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                <li>Next.js 前端应用 - 运行在本地 localhost:3000</li>
-                <li>通过 SSH 端口转发访问远程后端服务</li>
+                <li>Next.js 前端 - localhost:3000</li>
+                <li>通过 NEXT_PUBLIC_API_URL 请求本地后端</li>
               </ul>
             </div>
             <div>
-              <h3 className="font-semibold mb-2">后端服务（服务器）</h3>
+              <h3 className="font-semibold mb-2">后端服务</h3>
               <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                <li>FastAPI 后端 - 运行在服务器 localhost:8000</li>
-                <li>通过 SSH 端口转发暴露到本地 localhost:8000</li>
-                <li>服务器地址: connect.cqa1.seetacloud.com:38189</li>
+                <li>FastAPI 后端 - localhost:8000（langgraph_agent/backend）</li>
+                <li>DataClean - localhost:8001（ETM/dataclean，可选）</li>
               </ul>
             </div>
             <div>
               <h3 className="font-semibold mb-2">数据存储</h3>
               <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                <li>用户数据库: SQLite (users.db)</li>
-                <li>数据目录: /root/autodl-tmp/data</li>
-                <li>结果目录: /root/autodl-tmp/result</li>
-                <li>模型目录: /root/autodl-tmp/qwen3_embedding_0.6B</li>
+                <li>本地模拟: SQLite（data/theta.db）</li>
+                <li>数据目录: data/，结果目录: result/</li>
               </ul>
             </div>
             <div>
               <h3 className="font-semibold mb-2">脚本服务</h3>
               <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                <li>脚本目录: /root/autodl-tmp/scripts/</li>
-                <li>通过 API 执行服务器上的 bash 脚本</li>
+                <li>通过 /api/scripts 执行（可选）</li>
               </ul>
             </div>
           </div>
@@ -485,22 +481,18 @@ export default function MonitorPage() {
             <div className="mt-2 space-y-2">
               <p>请确保以下步骤已完成：</p>
               <ol className="list-decimal list-inside space-y-1 text-sm">
-                <li>SSH 端口转发已启动：
+                <li>一键启动（在项目根目录）：
                   <code className="block mt-1 p-2 bg-muted rounded text-xs">
-                    ssh -N -L 8000:localhost:8000 -p 38189 root@connect.cqa1.seetacloud.com
+                    ./start.sh
                   </code>
                 </li>
-                <li>后端服务在服务器上运行：
+                <li>或分步启动后端（终端 1）：
                   <code className="block mt-1 p-2 bg-muted rounded text-xs">
-                    cd /root/autodl-tmp/langgraph_agent/backend<br />
-                    nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &gt; server.log 2&gt;&amp;1 &amp;
+                    cd langgraph_agent/backend<br />
+                    SIMULATION_MODE=true python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
                   </code>
                 </li>
-                <li>检查本地端口转发：
-                  <code className="block mt-1 p-2 bg-muted rounded text-xs">
-                    lsof -i :8000
-                  </code>
-                </li>
+                <li>检查端口：<code className="text-xs">lsof -i :8000</code></li>
               </ol>
               <p className="text-xs text-muted-foreground mt-2">
                 如果所有步骤都已完成，请点击"刷新"按钮重新检查服务状态。

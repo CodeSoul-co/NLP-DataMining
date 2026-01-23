@@ -1243,7 +1243,7 @@ function HomeContent() {
           if (error.message.includes('Not Found') || error.message.includes('404')) {
             errorContent = "AI 助手服务暂时不可用。请检查后端服务是否正常运行，或稍后再试。"
           } else if (error.message.includes('fetch') || error.message.includes('network')) {
-            errorContent = "无法连接到服务器。请检查网络连接和 SSH 端口转发是否正常运行。"
+            errorContent = "无法连接到服务器。请检查后端是否在本地运行（如 ./start.sh）及网络连接。"
           } else {
             errorContent = `错误: ${error.message}`
           }

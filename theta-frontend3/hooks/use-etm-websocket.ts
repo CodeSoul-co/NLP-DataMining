@@ -122,7 +122,7 @@ export function useETMWebSocket(url: string = '/api/ws'): UseETMWebSocketReturn 
           console.warn('ETM WebSocket connection failed:', {
             url: finalUrl,
             readyState: stateNames[readyState] || readyState,
-            hint: '请确保后端服务正在运行，并且 SSH 端口转发已启动。WebSocket 将自动重连。'
+            hint: '请确保后端服务在本地运行（如 ./start.sh）。WebSocket 将自动重连。'
           });
         }
       };

@@ -238,7 +238,7 @@ class ETMAgent:
         
         # 存储到内存和持久化存储
         self.active_tasks[task_id] = initial_state
-        task_store.create_task(dict(initial_state))
+        task_store.create_task(task_id, dict(initial_state))
         
         logger.info(f"Created task {task_id} for dataset {request.dataset}")
         
@@ -267,7 +267,7 @@ class ETMAgent:
             initial_state = create_initial_state(request)
             task_id = initial_state["task_id"]
             self.active_tasks[task_id] = initial_state
-            task_store.create_task(dict(initial_state))
+            task_store.create_task(task_id, dict(initial_state))
         
         if callback:
             self.register_callback(task_id, callback)
@@ -297,12 +297,11 @@ class ETMAgent:
             
             # 更新持久化存储
             if final_state.get("status") == "completed":
-                task_store.complete_task(
-                    task_id,
-                    metrics=final_state.get("metrics"),
-                    topic_words=final_state.get("topic_words"),
-                    visualization_paths=final_state.get("visualization_paths")
-                )
+                task_store.set_completed(task_id, {
+                    "metrics": final_state.get("metrics"),
+                    "topic_words": final_state.get("topic_words"),
+                    "visualization_paths": final_state.get("visualization_paths"),
+                })
             else:
                 task_store.update_task(task_id, dict(final_state))
             
@@ -322,7 +321,7 @@ class ETMAgent:
                 "updated_at": datetime.now().isoformat()
             }
             self.active_tasks[task_id] = error_state
-            task_store.fail_task(task_id, str(e))
+            task_store.set_failed(task_id, str(e))
             
             return error_state
             

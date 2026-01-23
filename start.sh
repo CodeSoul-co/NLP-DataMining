@@ -1,171 +1,122 @@
 #!/bin/bash
 
-# THETA 项目启动脚本
-# 启动所有服务：后端 API、DataClean API 和前端应用
+# THETA 本地开发启动脚本
+# 启动：后端(8000) + DataClean(8001) + 前端(3000)
+# 若自动启动失败，请用 分步启动 方式（见下方或 前后端完成与对接情况.md）
 
-set -e
+# 不用 set -e，单步失败时继续尝试后续服务
+set +e
 
-# 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# 获取项目根目录
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$PROJECT_ROOT"
+cd "$PROJECT_ROOT" || exit 1
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  THETA 项目启动脚本${NC}"
+echo -e "${GREEN}  THETA 本地开发 (后端 + DataClean + 前端)${NC}"
 echo -e "${GREEN}========================================${NC}"
-echo ""
 
-# 检查 Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}❌ 错误: 未找到 Python 3${NC}"
+# 必要命令
+for c in python3 node; do
+  if ! command -v $c &>/dev/null; then
+    echo -e "${RED}❌ 缺少: $c${NC}"
     exit 1
-fi
+  fi
+done
+PM=pnpm; command -v pnpm &>/dev/null || PM=npm
+echo -e "Python: $(python3 --version) | Node: $(node -v) | 包管理: $PM"
 
-# 检查 Node.js
-if ! command -v node &> /dev/null; then
-    echo -e "${RED}❌ 错误: 未找到 Node.js${NC}"
-    echo "请先安装 Node.js: https://nodejs.org/"
-    exit 1
-fi
-
-# 检查 pnpm（推荐）或 npm
-if command -v pnpm &> /dev/null; then
-    PACKAGE_MANAGER="pnpm"
-elif command -v npm &> /dev/null; then
-    PACKAGE_MANAGER="npm"
-else
-    echo -e "${RED}❌ 错误: 未找到 pnpm 或 npm${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✓${NC} Python: $(python3 --version)"
-echo -e "${GREEN}✓${NC} Node.js: $(node --version)"
-echo -e "${GREEN}✓${NC} 包管理器: $PACKAGE_MANAGER"
-echo ""
-
-# 函数：清理后台进程
-cleanup() {
-    echo ""
-    echo -e "${YELLOW}正在停止所有服务...${NC}"
-    kill $BACKEND_PID $DATACLEAN_PID $FRONTEND_PID 2>/dev/null || true
-    wait $BACKEND_PID $DATACLEAN_PID $FRONTEND_PID 2>/dev/null || true
-    echo -e "${GREEN}所有服务已停止${NC}"
-    exit 0
+# 清理占用端口的进程
+kill_port() {
+  local p
+  p=$(lsof -ti:$1 2>/dev/null)
+  if [ -n "$p" ]; then
+    echo "$p" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
 }
 
-# 捕获 Ctrl+C
-trap cleanup SIGINT SIGTERM
-
-# 设置 Python 路径
 export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/ETM:$PROJECT_ROOT/langgraph_agent/backend"
+export SIMULATION_MODE=true
+export DEBUG=true
 
-# 检查后端依赖
-if ! python3 -c "import fastapi, uvicorn" 2>/dev/null; then
-    echo -e "${YELLOW}安装后端依赖...${NC}"
-    pip install -q fastapi uvicorn[standard] websockets python-multipart pydantic pydantic-settings langgraph langchain langchain-core || true
-fi
+# 从 .env 注入 QWEN_API_KEY（AI 助手用），优先 项目根/.env，否则 backend/.env
+for f in "$PROJECT_ROOT/.env" "$PROJECT_ROOT/langgraph_agent/backend/.env"; do
+  if [ -f "$f" ] && grep -q '^QWEN_API_KEY=' "$f" 2>/dev/null; then
+    export QWEN_API_KEY=$(grep '^QWEN_API_KEY=' "$f" | sed 's/^QWEN_API_KEY=//' | tr -d '"' | tr -d "'" | head -1)
+    [ -n "$QWEN_API_KEY" ] && echo -e "${GREEN}✓${NC} 已从 .env 加载 QWEN_API_KEY（AI 助手）" || true
+    break
+  fi
+done
 
-# ==========================================
-# 1. 启动 LangGraph Agent API (端口 8000)
-# ==========================================
-echo -e "${YELLOW}[1/3] 启动 LangGraph Agent API...${NC}"
+# 后端依赖（模拟模式：SQLite，不依赖 PostgreSQL/Redis）
+echo -e "\n${YELLOW}[1/3] 后端 API (8000)${NC}"
+for pkg in fastapi uvicorn sqlalchemy aiosqlite; do
+  python3 -c "import $pkg" 2>/dev/null || pip install -q "$pkg" 2>/dev/null || true
+done
+python3 -c "import langgraph" 2>/dev/null || pip install -q langgraph langchain langchain-core 2>/dev/null || true
 
-cd "$PROJECT_ROOT/langgraph_agent/backend"
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 > /tmp/theta_backend.log 2>&1 &
-BACKEND_PID=$!
+kill_port 8000
+cd "$PROJECT_ROOT/langgraph_agent/backend" || exit 1
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > /tmp/theta_backend.log 2>&1 &
+BID=$!
 
-sleep 2
-
-if curl -s http://localhost:8000/ > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} LangGraph Agent API 已启动"
-    echo -e "   ${GREEN}→${NC} API: http://localhost:8000"
-    echo -e "   ${GREEN}→${NC} 文档: http://localhost:8000/docs"
+co="-s --connect-timeout 2 --max-time 3"
+n=0; while [ $n -lt 10 ]; do
+  sleep 1; n=$((n+1))
+  curl $co http://localhost:8000/ >/dev/null 2>&1 && break
+done
+if curl $co http://localhost:8000/ >/dev/null 2>&1; then
+  echo -e "${GREEN}✓${NC} 后端: http://localhost:8000 文档: /docs"
 else
-    echo -e "${RED}⚠️  LangGraph Agent API 可能未正常启动${NC}"
+  echo -e "${RED}✗ 后端未就绪${NC} → tail -f /tmp/theta_backend.log"
 fi
 
-echo ""
+# DataClean（依赖: python-docx, pandas, jieba 等，缺则跳过）
+echo -e "\n${YELLOW}[2/3] DataClean API (8001)${NC}"
+kill_port 8001
+( cd "$PROJECT_ROOT/ETM/dataclean" && PORT=8001 python3 api.py > /tmp/theta_dataclean.log 2>&1 ) &
+DID=$!
 
-# ==========================================
-# 2. 启动 DataClean API (端口 8001)
-# ==========================================
-echo -e "${YELLOW}[2/3] 启动 DataClean API...${NC}"
-
-cd "$PROJECT_ROOT/ETM/dataclean"
-PORT=8001 python3 api.py > /tmp/theta_dataclean.log 2>&1 &
-DATACLEAN_PID=$!
-
-sleep 2
-
-if curl -s http://localhost:8001/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} DataClean API 已启动"
-    echo -e "   ${GREEN}→${NC} API: http://localhost:8001"
-    echo -e "   ${GREEN}→${NC} 文档: http://localhost:8001/docs"
+n=0; while [ $n -lt 6 ]; do sleep 1; n=$((n+1)); curl $co http://localhost:8001/health >/dev/null 2>&1 && break; done
+if curl $co http://localhost:8001/health >/dev/null 2>&1; then
+  echo -e "${GREEN}✓${NC} DataClean: http://localhost:8001"
 else
-    echo -e "${RED}⚠️  DataClean API 可能未正常启动${NC}"
+  echo -e "${YELLOW}⊘ DataClean 未启动${NC}（可选）→ pip install -r ETM/dataclean/requirements.txt 后重试"
 fi
 
-echo ""
+# 前端
+echo -e "\n${YELLOW}[3/3] 前端 (3000)${NC}"
+kill_port 3000
+cd "$PROJECT_ROOT/theta-frontend3" || exit 1
+[ ! -d node_modules ] && $PM install
+# 本地开发固定用 8000/8001，每次启动写入，避免旧 SSH/远程配置导致连接失败
+printf "NEXT_PUBLIC_API_URL=http://localhost:8000\nNEXT_PUBLIC_DATACLEAN_API_URL=http://localhost:8001\n" > .env.local
 
-# ==========================================
-# 3. 启动前端应用 (端口 3000)
-# ==========================================
-echo -e "${YELLOW}[3/3] 启动前端应用...${NC}"
-
-cd "$PROJECT_ROOT/theta-frontend3"
-
-# 检查 node_modules
-if [ ! -d "node_modules" ]; then
-    echo -e "${YELLOW}安装前端依赖（这可能需要几分钟）...${NC}"
-    $PACKAGE_MANAGER install
-fi
-
-# 检查环境变量
-if [ ! -f ".env.local" ]; then
-    echo -e "${YELLOW}创建 .env.local 文件...${NC}"
-    cat > .env.local << EOF
-NEXT_PUBLIC_ETM_AGENT_API_URL=http://localhost:8000
-NEXT_PUBLIC_DATACLEAN_API_URL=http://localhost:8001
-EOF
-fi
-
-# 启动前端（后台运行）
-$PACKAGE_MANAGER run dev > /tmp/theta_frontend.log 2>&1 &
-FRONTEND_PID=$!
-
-# 等待前端启动
-echo -e "${YELLOW}等待前端启动...${NC}"
-sleep 5
-
-# 检查前端是否启动成功
-if curl -s http://localhost:3000 > /dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} 前端应用已启动"
-    echo -e "   ${GREEN}→${NC} 前端: http://localhost:3000"
+$PM run dev > /tmp/theta_frontend.log 2>&1 &
+FID=$!
+sleep 6
+if curl $co http://localhost:3000 >/dev/null 2>&1; then
+  echo -e "${GREEN}✓${NC} 前端: http://localhost:3000"
 else
-    echo -e "${RED}⚠️  前端可能未正常启动${NC}"
+  echo -e "${YELLOW}⊘ 前端启动中…${NC} 稍后访问 http://localhost:3000 或 tail -f /tmp/theta_frontend.log"
 fi
 
-echo ""
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  所有服务已启动！${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
-echo -e "${GREEN}访问地址:${NC}"
-echo -e "  ${GREEN}前端:${NC}            http://localhost:3000"
-echo -e "  ${GREEN}LangGraph API:${NC}   http://localhost:8000"
-echo -e "  ${GREEN}DataClean API:${NC}   http://localhost:8001"
-echo ""
-echo -e "${YELLOW}按 Ctrl+C 停止所有服务${NC}"
-echo ""
+echo -e "\n${GREEN}----------------------------------------${NC}"
+echo -e "  前端: http://localhost:3000"
+echo -e "  后端: http://localhost:8000  文档: http://localhost:8000/docs"
+echo -e "  DataClean: http://localhost:8001"
+echo -e "  日志: /tmp/theta_backend.log, /tmp/theta_dataclean.log, /tmp/theta_frontend.log"
+echo -e "  按 Ctrl+C 停止 | 若失败见 前后端完成与对接情况.md 分步启动"
+echo -e "${GREEN}----------------------------------------${NC}\n"
 
-# 显示日志
-echo -e "${YELLOW}实时日志:${NC}"
-echo ""
-
-# 等待用户中断
-tail -f /tmp/theta_backend.log /tmp/theta_dataclean.log /tmp/theta_frontend.log 2>/dev/null || wait
+cleanup() {
+  printf "\n${YELLOW}停止服务…${NC}\n"
+  kill $BID $DID $FID 2>/dev/null; wait $BID $DID $FID 2>/dev/null; exit 0
+}
+trap cleanup SIGINT SIGTERM
+wait $BID $DID $FID 2>/dev/null; true

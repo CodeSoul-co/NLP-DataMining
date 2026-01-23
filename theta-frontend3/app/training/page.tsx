@@ -70,7 +70,7 @@ function TrainingContent() {
         const systemMsg: Message = {
           id: `error-${Date.now()}`,
           role: 'system',
-          content: `⚠️ ${errorMessage}\n\n请确保 ETM Agent API 服务正在运行在 ${process.env.NEXT_PUBLIC_ETM_AGENT_API_URL || 'http://localhost:8000'}`,
+          content: `⚠️ ${errorMessage}\n\n请确保 ETM Agent API 服务正在运行在 ${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`,
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, systemMsg]);

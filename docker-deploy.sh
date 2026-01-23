@@ -30,23 +30,30 @@ fi
 echo "✅ Docker 环境检查通过"
 echo ""
 
+# 选择 docker compose 命令
+if docker compose version &>/dev/null; then
+    DCO="docker compose"
+else
+    DCO="docker-compose"
+fi
+
 # 检查 .env 文件
 if [ ! -f ".env" ]; then
     echo "📝 创建 .env 文件..."
-    if [ -f ".env.example" ]; then
-        cp .env.example .env
-        echo "✅ 已从 .env.example 创建 .env 文件"
-        echo "⚠️  请编辑 .env 文件，设置正确的配置值"
+    if [ -f "docker.env.template" ]; then
+        cp docker.env.template .env
+        echo "✅ 已从 docker.env.template 创建 .env 文件"
+        echo "⚠️  请编辑 .env，必填: QWEN_API_KEY, POSTGRES_PASSWORD, SECRET_KEY, DOMAIN"
         echo ""
         read -p "是否现在编辑 .env 文件? (y/n) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             ${EDITOR:-nano} .env
         fi
-    elif [ -f "docker.env.template" ]; then
-        cp docker.env.template .env
-        echo "✅ 已从 docker.env.template 创建 .env 文件"
-        echo "⚠️  请编辑 .env 文件，设置正确的配置值"
+    elif [ -f ".env.example" ]; then
+        cp .env.example .env
+        echo "✅ 已从 .env.example 创建 .env 文件"
+        echo "⚠️  请编辑 .env，必填: QWEN_API_KEY, POSTGRES_PASSWORD, SECRET_KEY, DOMAIN"
         echo ""
         read -p "是否现在编辑 .env 文件? (y/n) " -n 1 -r
         echo
@@ -54,75 +61,65 @@ if [ ! -f ".env" ]; then
             ${EDITOR:-nano} .env
         fi
     else
-        echo "⚠️  未找到 .env.example，请手动创建 .env 文件"
+        echo "⚠️  未找到 docker.env.template 或 .env.example，请手动创建 .env"
+        exit 1
     fi
 fi
 
 # 创建必要的目录
 echo "📁 创建必要的目录..."
 mkdir -p ETM/dataclean/temp_uploads ETM/dataclean/temp_processed
+mkdir -p nginx/certs data result
 chmod 755 ETM/dataclean/temp_uploads ETM/dataclean/temp_processed
 
 # 停止现有容器（如果存在）
 echo "🛑 停止现有容器..."
-docker-compose down 2>/dev/null || true
+$DCO down 2>/dev/null || true
 
 # 构建镜像
-echo "🔨 构建 Docker 镜像..."
-docker-compose build --no-cache
+echo "🔨 构建 Docker 镜像（--no-cache）..."
+$DCO build --no-cache
 
 # 启动服务
 echo "🚀 启动服务..."
-docker-compose up -d
+$DCO up -d
 
 # 等待服务启动
 echo "⏳ 等待服务启动..."
-sleep 10
+sleep 15
 
 # 检查服务状态
 echo ""
 echo "📊 服务状态:"
-docker-compose ps
+$DCO ps
 
-# 检查健康状态
+# 健康检查（通过 Nginx 80 端口）
 echo ""
-echo "🏥 健康检查:"
-echo -n "ETM Agent API (8000): "
-if curl -s http://localhost:8000/health > /dev/null; then
-    echo "✅ 运行正常"
+echo "🏥 健康检查（通过 http://localhost）:"
+echo -n "Nginx /health: "
+if curl -sf http://localhost/health >/dev/null; then
+    echo "✅"
 else
-    echo "❌ 无法访问，请检查日志: docker-compose logs etm-agent-api"
+    echo "❌ 检查: $DCO logs nginx"
 fi
 
-echo -n "DataClean API (8001): "
-if curl -s http://localhost:8001/health > /dev/null; then
-    echo "✅ 运行正常"
+echo -n "后端 /api/health: "
+if curl -sf http://localhost/api/health >/dev/null; then
+    echo "✅"
 else
-    echo "❌ 无法访问，请检查日志: docker-compose logs dataclean-api"
+    echo "❌ 检查: $DCO logs backend"
 fi
 
-echo -n "前端 (3000): "
-if curl -s http://localhost:3000 > /dev/null; then
-    echo "✅ 运行正常"
+echo -n "前端 /: "
+if curl -sf http://localhost/ >/dev/null; then
+    echo "✅"
 else
-    echo "❌ 无法访问，请检查日志: docker-compose logs theta-frontend"
+    echo "❌ 检查: $DCO logs frontend"
 fi
 
 echo ""
 echo "✅ 部署完成！"
 echo ""
-echo "📋 常用命令:"
-echo "  查看日志:     docker-compose logs -f"
-echo "  停止服务:     docker-compose down"
-echo "  重启服务:     docker-compose restart"
-echo "  查看状态:     docker-compose ps"
-echo "  更新代码:     git pull && docker-compose up -d --build"
-echo ""
-echo "🌐 访问地址:"
-echo "  前端: http://localhost:3000"
-echo "  ETM Agent API: http://localhost:8000"
-echo "  DataClean API: http://localhost:8001"
-echo ""
-echo "📊 API 健康检查:"
-echo "  ETM Agent: http://localhost:8000/health"
-echo "  DataClean: http://localhost:8001/health"
+echo "📋 常用: $DCO logs -f | $DCO down | $DCO ps"
+echo "🔄 更新: git pull && $DCO build --no-cache && $DCO up -d"
+echo "🌐 访问: http://服务器IP 或 http://域名（/api/, /dataclean/）"

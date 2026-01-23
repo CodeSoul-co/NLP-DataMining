@@ -37,7 +37,7 @@ QWEN_MODEL: str = "qwen-turbo"  # qwen-turbo, qwen-plus, qwen-max
 创建 `.env` 文件：
 
 ```bash
-QWEN_API_KEY=sk-ca1e46556f584e50aa74a2f6ff5659f0
+QWEN_API_KEY=sk-你的DashScope密钥
 QWEN_MODEL=qwen-turbo
 ```
 

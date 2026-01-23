@@ -187,7 +187,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
     // 网络错误（连接失败、CORS、超时等）
     const errorMessage = error.message || 'Network error';
     if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-      throw new Error('无法连接到后端服务。请检查：\n1. SSH 端口转发是否已启动（ssh -N -L 8000:localhost:8000 -p 38189 root@connect.cqa1.seetacloud.com）\n2. 后端服务是否正在运行\n3. 网络连接是否正常');
+      throw new Error('无法连接到后端服务。请检查：\n1. 后端是否在本地运行（如 ./start.sh 或 uvicorn）\n2. NEXT_PUBLIC_API_URL 是否为 http://localhost:8000\n3. 网络连接是否正常');
     }
     throw error;
   }
@@ -305,7 +305,7 @@ export const ETMAgentAPI = {
         
         // status === 0 通常表示网络错误（连接失败、CORS 错误等）
         if (xhr.status === 0) {
-          reject(new Error('无法连接到后端服务。请检查：\n1. SSH 端口转发是否已启动（ssh -N -L 8000:localhost:8000 -p 38189 root@connect.cqa1.seetacloud.com）\n2. 后端服务是否正在运行\n3. 网络连接是否正常'));
+          reject(new Error('无法连接到后端服务。请检查：\n1. 后端是否在本地运行（如 ./start.sh 或 uvicorn）\n2. NEXT_PUBLIC_API_URL 是否为 http://localhost:8000\n3. 网络连接是否正常'));
           return;
         }
         
@@ -343,7 +343,7 @@ export const ETMAgentAPI = {
         // readyState 通常是 4（完成）或 0（未初始化）
         // status 通常是 0
         const errorMsg = xhr.status === 0 
-          ? '无法连接到后端服务。请检查：\n1. SSH 端口转发是否已启动\n2. 后端服务是否正在运行\n3. 网络连接是否正常'
+          ? '无法连接到后端服务。请检查：\n1. 后端是否在本地运行（如 ./start.sh）\n2. 后端服务是否正在运行\n3. 网络连接是否正常'
           : `网络错误 (状态码: ${xhr.status}): 上传过程中连接中断`;
         
         reject(new Error(errorMsg));

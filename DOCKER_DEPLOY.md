@@ -1,408 +1,164 @@
-# Docker 部署指南
+# Docker 部署指南（全栈：Nginx + 前端 + 后端 + DataClean + PostgreSQL + Redis）
 
-本指南介绍如何使用 Docker 在服务器上部署 THETA 项目。
+本指南适用于在服务器上使用 **根目录 `docker-compose.yml`** 进行一次性构建与部署。
 
 ## 前置要求
 
-- Ubuntu 20.04+ / CentOS 7+ / Debian 11+ 服务器
-- Root 或 sudo 权限
-- 至少 2GB RAM
-- 至少 10GB 磁盘空间
+- Linux（Ubuntu 20.04+ / Debian 11+ / CentOS 7+），root 或 sudo
+- Docker 与 Docker Compose（v2: `docker compose` 或 v1: `docker-compose`）
+- 至少 2GB RAM，10GB 磁盘
 
-## 快速开始
+## 一、安装 Docker 与 Docker Compose
 
-### 1. 安装 Docker 和 Docker Compose
+### Ubuntu / Debian
 
-#### Ubuntu/Debian
 ```bash
-# 安装 Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
-
-# 安装 Docker Compose
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
-
-# 启动 Docker 服务
-sudo systemctl start docker
-sudo systemctl enable docker
-
-# 验证安装
-docker --version
-docker-compose --version
+sudo systemctl enable --now docker
+docker --version && docker-compose --version
 ```
 
-#### CentOS/RHEL
+### CentOS / RHEL
+
 ```bash
-# 安装 Docker
 sudo yum install -y yum-utils
 sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 sudo yum install -y docker-ce docker-ce-cli containerd.io
-sudo systemctl start docker
-sudo systemctl enable docker
-
-# 安装 Docker Compose
 sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 sudo chmod +x /usr/local/bin/docker-compose
-
-# 验证安装
-docker --version
-docker-compose --version
+sudo systemctl enable --now docker
+docker --version && docker-compose --version
 ```
 
-### 2. 克隆项目
+## 二、克隆项目
 
 ```bash
 cd /opt
-sudo git clone https://github.com/CodeSoul-co/THETA.git
+sudo git clone <你的仓库地址> THETA
 cd THETA
-sudo git checkout frontend-3
+git checkout frontend-3   # 如需要
 ```
 
-### 3. 配置环境变量
+## 三、配置环境变量（必做）
 
 ```bash
-# 复制环境变量模板
-sudo cp .env.example .env
-
-# 编辑环境变量（根据实际情况修改）
-sudo nano .env
+cp docker.env.template .env
+nano .env   # 或 vi / vim
 ```
 
-**重要配置项：**
-- `API_PORT`: 后端 API 端口（默认 8001）
-- `FRONTEND_PORT`: 前端端口（默认 3000）
-- `ALLOWED_ORIGINS`: CORS 允许的源（生产环境设置为实际域名）
-- `NEXT_PUBLIC_DATACLEAN_API_URL`: 前端访问后端的 URL
+**必须修改的项：**
 
-### 4. 一键部署
+| 变量 | 说明 |
+|------|------|
+| `QWEN_API_KEY` | 千问 API Key，否则 AI 相关功能不可用 |
+| `POSTGRES_PASSWORD` | 数据库密码，生产环境务必改成强密码 |
+| `SECRET_KEY` | JWT 等认证密钥，请改为随机字符串 |
+| `DOMAIN` | 对外域名，用于 CORS；仅本机可填 `localhost` |
 
-```bash
-# 添加执行权限
-sudo chmod +x docker-deploy.sh
+**可选（按需）：**
 
-# 运行部署脚本
-sudo ./docker-deploy.sh
-```
+- `NEXT_PUBLIC_API_URL`、`NEXT_PUBLIC_DATACLEAN_API_URL`：前端通过 Nginx 访问时，若使用域名，需在 **构建前端镜像前** 通过 build-arg 传入（当前 Dockerfile 未做则沿用编译时默认；仅暴露 80/443 时，用相对路径或同域即可）。
+- `ALLOWED_ORIGINS`：若不用 `docker.env.template` 的 CORS，可在后端/DataClean 环境变量中单独配置。
+- OSS / PAI / EAS：按需填写。
 
-脚本会自动：
-- 检查 Docker 环境
-- 创建必要的目录
-- 构建 Docker 镜像
-- 启动所有服务
-- 进行健康检查
+**注意：** `.env` 已在 `.gitignore`，切勿 `git add .env`。
 
-### 5. 验证部署
+## 四、目录与 Nginx 证书目录
 
 ```bash
-# 查看服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f
-
-# 测试 API
-curl http://localhost:8001/health
-
-# 测试前端
-curl http://localhost:3000
-```
-
-## 手动部署步骤
-
-如果不使用自动脚本，可以手动执行：
-
-```bash
-# 1. 创建目录
 mkdir -p ETM/dataclean/temp_uploads ETM/dataclean/temp_processed
-
-# 2. 构建镜像
-docker-compose build
-
-# 3. 启动服务
-docker-compose up -d
-
-# 4. 查看日志
-docker-compose logs -f
+mkdir -p nginx/certs data result
+# nginx/certs：未配置 HTTPS 时可为空；启用 HTTPS 时放入 fullchain.pem、privkey.pem
+# data、result：后端挂载目录，可留空由 compose 自动创建
 ```
 
-## 配置 Nginx 反向代理（可选）
+当前 `nginx/nginx.conf` 默认只启用 HTTP（80），未启用 SSL；如需 HTTPS，需在 `nginx.conf` 中取消 443 与 `ssl_certificate` 等注释，并在 `nginx/certs` 中放置证书。
 
-### 安装 Nginx
+## 五、构建与启动（重新构建部署）
 
 ```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install -y nginx
+# 推荐：无缓存构建，保证用到最新代码与依赖
+docker compose build --no-cache
+# 或旧版： docker-compose build --no-cache
 
-# CentOS/RHEL
-sudo yum install -y nginx
+docker compose up -d
+# 或： docker-compose up -d
 ```
 
-### 配置前端反向代理
+如需先停掉旧容器再起：
 
 ```bash
-# 复制配置模板
-sudo cp theta-frontend3/nginx-frontend.conf.example /etc/nginx/sites-available/theta-frontend
-
-# 编辑配置（修改域名）
-sudo nano /etc/nginx/sites-available/theta-frontend
-
-# 创建软链接
-sudo ln -s /etc/nginx/sites-available/theta-frontend /etc/nginx/sites-enabled/
-
-# 测试配置
-sudo nginx -t
-
-# 重启 Nginx
-sudo systemctl restart nginx
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
-### 配置后端 API 反向代理
+## 六、一键脚本（可选）
 
 ```bash
-# 复制配置模板
-sudo cp ETM/dataclean/nginx.conf.example /etc/nginx/sites-available/dataclean-api
-
-# 编辑配置（修改域名）
-sudo nano /etc/nginx/sites-available/dataclean-api
-
-# 创建软链接
-sudo ln -s /etc/nginx/sites-available/dataclean-api /etc/nginx/sites-enabled/
-
-# 测试并重启
-sudo nginx -t
-sudo systemctl restart nginx
+chmod +x docker-deploy.sh
+./docker-deploy.sh
 ```
 
-**重要：** 使用 Nginx 反向代理时，需要修改 `.env` 文件中的 `NEXT_PUBLIC_DATACLEAN_API_URL` 为实际的 API 域名。
+脚本会：检查 Docker、若缺 `.env` 则从 `docker.env.template` 复制、创建目录、`build --no-cache`、`up -d`，并对 Nginx / 后端 / 前端做简单健康检查。
 
-## 配置 HTTPS（使用 Let's Encrypt）
+## 七、验证
+
+- **Nginx：** `curl -s http://localhost/health` 应返回 `OK`
+- **后端：** `curl -s http://localhost/api/health`
+- **前端：** 浏览器访问 `http://服务器IP` 或 `http://域名`
+
+通过 Nginx 的访问路径：
+
+- 前端：`/`
+- 后端 API：`/api/`
+- DataClean：`/dataclean/`
+- WebSocket：`/api/ws`
+
+## 八、常用命令
 
 ```bash
-# 安装 Certbot
-sudo apt install -y certbot python3-certbot-nginx
+docker compose ps
+docker compose logs -f
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f dataclean
 
-# 获取证书
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
-sudo certbot --nginx -d api.yourdomain.com
-
-# 测试自动续期
-sudo certbot renew --dry-run
+docker compose down
+docker compose up -d
+docker compose restart
 ```
 
-## 常用命令
-
-### 服务管理
+## 九、更新代码后重新构建部署
 
 ```bash
-# 启动服务
-docker-compose up -d
-
-# 停止服务
-docker-compose down
-
-# 重启服务
-docker-compose restart
-
-# 查看状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f
-
-# 查看特定服务日志
-docker-compose logs -f dataclean-api
-docker-compose logs -f theta-frontend
-```
-
-### 更新部署
-
-```bash
-# 拉取最新代码
 git pull
-
-# 重新构建并启动
-docker-compose up -d --build
-
-# 清理未使用的镜像
-docker system prune -a
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
 
-### 数据管理
+## 十、故障排查
 
-```bash
-# 查看数据卷
-docker volume ls
+- **构建失败：** `docker compose build --no-cache`，查看 `docker compose logs build 出错的服务名`。
+- **后端连不上 DB/Redis：** 等 `db`、`redis` 健康后再起 `backend`；看 `docker compose logs backend`。
+- **前端 404/接口不对：** 确认 Nginx 将 `/api/`、`/dataclean/` 正确反代；若改过 `NEXT_PUBLIC_*`，需重新 `build` 前端镜像。
+- **QWEN 报错：** 在 `.env` 中正确设置 `QWEN_API_KEY` 并重启：`docker compose up -d backend`。
 
-# 备份数据
-docker run --rm -v theta_temp_uploads:/data -v $(pwd):/backup alpine tar czf /backup/uploads-backup.tar.gz /data
+## 十一、服务与端口（compose 内）
 
-# 恢复数据
-docker run --rm -v theta_temp_uploads:/data -v $(pwd):/backup alpine tar xzf /backup/uploads-backup.tar.gz -C /
-```
+| 服务 | 容器名 | 内部端口 | 说明 |
+|------|--------|----------|------|
+| nginx | theta-nginx | 80, 443 | 反向代理，对外暴露 80/443 |
+| frontend | theta-frontend | 3000 | Next.js |
+| backend | theta-backend | 8000 | FastAPI（langgraph_agent/backend） |
+| dataclean | theta-dataclean | 8001 | DataClean API |
+| db | theta-db | 5432 | PostgreSQL |
+| redis | theta-redis | 6379 | Redis |
 
-## 故障排查
+---
 
-### 1. 容器无法启动
-
-```bash
-# 查看详细日志
-docker-compose logs [service-name]
-
-# 检查容器状态
-docker-compose ps
-
-# 进入容器调试
-docker-compose exec [service-name] sh
-```
-
-### 2. 端口冲突
-
-```bash
-# 检查端口占用
-sudo netstat -tlnp | grep -E '8001|3000'
-
-# 修改 .env 文件中的端口配置
-nano .env
-```
-
-### 3. 构建失败
-
-```bash
-# 清理构建缓存
-docker-compose build --no-cache
-
-# 查看构建日志
-docker-compose build
-```
-
-### 4. 网络问题
-
-```bash
-# 检查网络
-docker network ls
-docker network inspect theta_theta-network
-
-# 测试容器间通信
-docker-compose exec theta-frontend ping dataclean-api
-```
-
-### 5. 权限问题
-
-```bash
-# 修复目录权限
-sudo chown -R $USER:$USER ETM/dataclean/temp_uploads
-sudo chmod -R 755 ETM/dataclean/temp_uploads
-```
-
-## 性能优化
-
-### 1. 资源限制
-
-在 `docker-compose.yml` 中添加资源限制：
-
-```yaml
-services:
-  dataclean-api:
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-```
-
-### 2. 日志管理
-
-```bash
-# 限制日志大小（在 docker-compose.yml 中）
-logging:
-  driver: "json-file"
-  options:
-    max-size: "10m"
-    max-file: "3"
-```
-
-## 安全建议
-
-1. **防火墙配置**
-```bash
-# Ubuntu (UFW)
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-```
-
-2. **使用非 root 用户运行 Docker**
-```bash
-sudo usermod -aG docker $USER
-# 重新登录使配置生效
-```
-
-3. **定期更新镜像**
-```bash
-docker-compose pull
-docker-compose up -d
-```
-
-4. **备份数据**
-定期备份数据卷和配置文件
-
-## 监控和维护
-
-### 查看资源使用
-
-```bash
-docker stats
-```
-
-### 查看容器日志
-
-```bash
-# 实时日志
-docker-compose logs -f
-
-# 最近 100 行
-docker-compose logs --tail=100
-```
-
-### 健康检查
-
-```bash
-# API 健康检查
-curl http://localhost:8001/health
-
-# 前端检查
-curl http://localhost:3000
-```
-
-## 目录结构
-
-```
-/opt/THETA/
-├── docker-compose.yml      # Docker Compose 配置
-├── .env                     # 环境变量（需要创建）
-├── .env.example            # 环境变量模板
-├── docker-deploy.sh        # 一键部署脚本
-├── ETM/dataclean/          # 后端代码
-│   ├── Dockerfile
-│   └── ...
-└── theta-frontend3/        # 前端代码
-    ├── Dockerfile
-    └── ...
-```
-
-## 访问地址
-
-部署成功后：
-- **前端**: http://your-server-ip:3000
-- **后端 API**: http://your-server-ip:8001
-- **API 健康检查**: http://your-server-ip:8001/health
-
-配置 Nginx 后：
-- **前端**: https://yourdomain.com
-- **后端 API**: https://api.yourdomain.com
+部署完成后，可通过 **http://服务器IP** 或 **http://你的域名** 访问前端；API 为 **/api/**、**/dataclean/**。

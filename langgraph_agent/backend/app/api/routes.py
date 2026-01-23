@@ -19,7 +19,7 @@ from ..schemas.agent import (
     SuggestionsRequest, SuggestionsResponse
 )
 from ..schemas.data import DatasetInfo, ResultInfo, VisualizationInfo, ProjectInfo, MetricsResponse
-from ..agents.etm_agent import etm_agent
+from ..agents.etm_agent import etm_agent, create_initial_state
 from ..services.chat_service import chat_service
 from ..services.task_store import task_store
 from ..core.config import settings
@@ -711,13 +711,18 @@ async def run_simulated_pipeline(task_id: str, request: TaskRequest):
 async def run_real_pipeline(task_id: str, request: TaskRequest):
     """真实训练流水线（后台执行）"""
     try:
+        # 构造与 LangGraph 兼容的 initial_state，并固定为当前 task_id
+        initial = create_initial_state(request)
+        initial["task_id"] = task_id
+        etm_agent.active_tasks[task_id] = initial
+
         # 更新状态为运行中
         task_store.set_running(task_id)
         task_store.add_log(task_id, "start", "info", "开始执行 ETM 训练流水线")
-        
-        # 运行实际的 LangGraph pipeline
-        result = await etm_agent.run_pipeline(request)
-        
+
+        # 运行实际的 LangGraph pipeline（传入 task_id，复用上面写入的 initial_state）
+        result = await etm_agent.run_pipeline(request, task_id=task_id)
+
         # 更新最终状态
         if result.get("status") == "completed":
             task_store.set_completed(task_id, {
@@ -727,7 +732,7 @@ async def run_real_pipeline(task_id: str, request: TaskRequest):
             })
         else:
             task_store.set_failed(task_id, result.get("error_message", "Unknown error"))
-            
+
     except Exception as e:
         import traceback
         logger.error(f"Pipeline failed for {task_id}: {e}\n{traceback.format_exc()}")

@@ -1,65 +1,49 @@
-FROM node:20-alpine AS base
+# THETA 前端 Dockerfile
+# Next.js 16 + Node.js 20
+
+# 构建阶段
+FROM node:20-alpine AS builder
+
+WORKDIR /app
 
 # 安装 pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# 设置工作目录
-WORKDIR /app
-
 # 复制依赖文件
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml* ./
 
 # 安装依赖
 RUN pnpm install --frozen-lockfile
 
-# 复制配置文件
-COPY tsconfig.json next.config.mjs postcss.config.mjs components.json ./
-
-# 复制源代码目录（确保所有必要的目录都被包含）
-COPY app ./app
-COPY components ./components
-COPY lib ./lib
-COPY contexts ./contexts
-COPY public ./public
-COPY styles ./styles
-COPY hooks ./hooks
-
-# 构建参数（API URLs）
-ARG NEXT_PUBLIC_API_URL=http://localhost:8000
-ARG NEXT_PUBLIC_DATACLEAN_API_URL=http://localhost:8001
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-ENV NEXT_PUBLIC_DATACLEAN_API_URL=$NEXT_PUBLIC_DATACLEAN_API_URL
+# 复制源代码
+COPY . .
 
 # 构建应用
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
-# 生产镜像
+# 运行阶段
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-
-# 安装 pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# 复制必要文件
-COPY --from=base /app/package.json ./
-COPY --from=base /app/pnpm-lock.yaml ./
-COPY --from=base /app/.next ./.next
-COPY --from=base /app/public ./public
-COPY --from=base /app/node_modules ./node_modules
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # 创建非 root 用户
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+
+# 复制构建产物
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
 USER nextjs
 
-# 暴露端口
 EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# 启动命令
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]
