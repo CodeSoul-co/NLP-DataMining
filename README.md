@@ -502,6 +502,6 @@ DATASET_CONFIGS["my_dataset"] = {
 ## Contact
 
 Please contact us if you have any questions:
-- duanzhenke@stu.zuel.edu.cn
-- panjiqun@stu.zuel.edu.cn
-- lixin@stu.zuel.edu.cn
+- duanzhenke@code-soul.com
+- panjiqun@code-soul.com
+- lixin@code-soul.com
