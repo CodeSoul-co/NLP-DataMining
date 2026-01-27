@@ -1,0 +1,1 @@
+download the Sbert model from https://huggingface.co/patent/sbert-all-MiniLM-L6-v2
