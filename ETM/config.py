@@ -12,18 +12,83 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 
-# Base paths - 动态获取项目根目录
-def _get_project_root():
-    """获取项目根目录"""
-    # config.py 在 ETM/ 目录下，所以向上一级就是项目根目录
-    return Path(__file__).parent.parent
-
-BASE_DIR = _get_project_root()
+# Base paths
+BASE_DIR = Path("/root/autodl-tmp")
 DATA_DIR = BASE_DIR / "data"
 EMBEDDING_DIR = BASE_DIR / "embedding"
 ETM_DIR = BASE_DIR / "ETM"
-QWEN_MODEL_PATH = BASE_DIR / "qwen3_embedding_0.6B"
+# Unified embedding model storage path
+EMBEDDING_MODELS_DIR = BASE_DIR / "embedding_models"
+QWEN_MODEL_PATH = EMBEDDING_MODELS_DIR / "qwen3_embedding_0.6B"  # Default: 0.6B
 RESULT_DIR = BASE_DIR / "result"
+
+# Embedding model paths and dimension mapping
+QWEN_MODEL_PATHS = {
+    '0.6B': str(EMBEDDING_MODELS_DIR / "qwen3_embedding_0.6B"),
+    '4B': str(EMBEDDING_MODELS_DIR / "qwen3_embedding_4B"),
+    '8B': str(EMBEDDING_MODELS_DIR / "qwen3_embedding_8B"),
+}
+
+EMBEDDING_DIMS = {
+    '0.6B': 1024,
+    '4B': 2560,
+    '8B': 4096,
+}
+
+
+def get_qwen_model_path(model_size: str) -> str:
+    """Get Qwen model path based on model_size"""
+    if model_size not in QWEN_MODEL_PATHS:
+        raise ValueError(f"Unknown model size: {model_size}. Available: {list(QWEN_MODEL_PATHS.keys())}")
+    return QWEN_MODEL_PATHS[model_size]
+
+
+def get_embedding_dim(model_size: str) -> int:
+    """Get embedding dimension based on model_size"""
+    return EMBEDDING_DIMS.get(model_size, 1024)
+
+# Dataset-specific configurations
+# vocab_size should be proportional to dataset size but not too large
+# Rule of thumb: vocab_size ~ min(sqrt(n_docs) * 50, 10000)
+DATASET_CONFIGS = {
+    "socialTwitter": {
+        "vocab_size": 5000,      # ~40K docs
+        "num_topics": 20,
+        "min_doc_freq": 5,
+        "language": "multi",     # Spanish + some English
+    },
+    "hatespeech": {
+        "vocab_size": 8000,      # ~437K docs
+        "num_topics": 20,
+        "min_doc_freq": 10,
+        "language": "english",
+    },
+    "mental_health": {
+        "vocab_size": 10000,     # ~1M docs
+        "num_topics": 30,
+        "min_doc_freq": 20,
+        "language": "english",
+    },
+    "FCPB": {
+        "vocab_size": 8000,      # ~854K docs
+        "num_topics": 25,
+        "min_doc_freq": 15,
+        "language": "english",
+    },
+    "germanCoal": {
+        "vocab_size": 3000,      # ~9K docs (smaller dataset)
+        "num_topics": 15,
+        "min_doc_freq": 3,
+        "language": "german",
+    },
+    "edu_data": {
+        "vocab_size": 5000,      # ~857 docs (education policy documents)
+        "num_topics": 20,
+        "min_doc_freq": 3,
+        "language": "chinese",
+        "has_timestamp": True,   # DTM specific
+    },
+}
 
 
 @dataclass
@@ -37,7 +102,20 @@ class DataConfig:
     
     @property
     def raw_data_path(self) -> str:
-        return os.path.join(self.data_dir, self.dataset, f"{self.dataset}_text_only.csv")
+        """Get the raw data path, handling different naming conventions"""
+        dataset_dir = os.path.join(self.data_dir, self.dataset)
+        # Try different file naming patterns
+        patterns = [
+            f"{self.dataset}_text_only.csv",
+            "complaints_text_only.csv",      # FCPB
+            "german_coal_text_only.csv",     # germanCoal
+        ]
+        for pattern in patterns:
+            path = os.path.join(dataset_dir, pattern)
+            if os.path.exists(path):
+                return path
+        # Default fallback
+        return os.path.join(dataset_dir, f"{self.dataset}_text_only.csv")
     
     @property
     def cleaned_data_path(self) -> str:
@@ -66,8 +144,8 @@ class EmbeddingConfig:
 @dataclass
 class BOWConfig:
     """BOW generation configuration"""
-    vocab_size: int = 5000
-    min_doc_freq: int = 5
+    vocab_size: int = 8000
+    min_doc_freq: int = 10
     max_doc_freq_ratio: float = 0.5
     use_tfidf: bool = False
     language: str = "english"  # english, chinese, german
@@ -78,6 +156,7 @@ class BOWConfig:
     remove_hashtags: bool = False
     remove_numbers: bool = True
     lowercase: bool = True
+    min_word_length: int = 3  # Minimum word length to filter short noise
 
 
 @dataclass
@@ -90,22 +169,22 @@ class ModelConfig:
     word_embedding_dim: int = 1024
     encoder_dropout: float = 0.2
     encoder_activation: str = "relu"
-    train_word_embeddings: bool = False
+    train_word_embeddings: bool = True  # Default: train word embeddings from scratch
     
     # Training
-    epochs: int = 50
+    epochs: int = 100
     batch_size: int = 64
     learning_rate: float = 0.002
-    weight_decay: float = 1e-5
+    weight_decay: float = 1e-4
     
-    # KL Annealing
+    # KL Annealing - gradual warmup for stable training
     kl_start: float = 0.0
     kl_end: float = 1.0
-    kl_warmup_epochs: int = 50
+    kl_warmup_epochs: int = 30
     
-    # Early stopping
+    # Early stopping - need enough epochs for KL warmup
     early_stopping: bool = True
-    patience: int = 10
+    patience: int = 15
     min_delta: float = 0.001
     
     # Learning rate scheduler
@@ -171,12 +250,17 @@ class PipelineConfig:
     seed: int = 42
     dev_mode: bool = False
     
-    # Output - all results go to /root/autodl-tmp/result/{dataset}/{mode}/
+    # Model size for directory structure (e.g., '0.6B', '1.5B')
+    model_size: str = "0.6B"
+    
+    # Output - all results go to /root/autodl-tmp/result/{model_size}/{dataset}/{mode}/
     output_base_dir: str = str(RESULT_DIR)
     
     @property
     def result_dir(self) -> str:
         """Base result directory for this dataset/mode"""
+        if self.model_size:
+            return os.path.join(self.output_base_dir, self.model_size, self.data.dataset, self.embedding.mode)
         return os.path.join(self.output_base_dir, self.data.dataset, self.embedding.mode)
     
     @property
@@ -186,8 +270,11 @@ class PipelineConfig:
     
     @property
     def bow_dir(self) -> str:
-        """Directory for BOW matrices and vocabulary"""
-        return os.path.join(self.result_dir, "bow")
+        """Directory for BOW matrices and vocabulary (shared across modes)"""
+        # BOW is shared across all modes for fair comparison
+        if self.model_size:
+            return os.path.join(self.output_base_dir, self.model_size, self.data.dataset, "bow")
+        return os.path.join(self.output_base_dir, self.data.dataset, "bow")
     
     @property
     def model_dir(self) -> str:
@@ -345,6 +432,18 @@ def _add_training_args(parser: argparse.ArgumentParser):
                         help="Disable early stopping")
     parser.add_argument("--patience", type=int, default=10,
                         help="Early stopping patience")
+    
+    # Word embeddings
+    parser.add_argument("--train_word_embeddings", action="store_true", default=True,
+                        help="Train word embeddings from scratch (default: True)")
+    parser.add_argument("--no_train_word_embeddings", action="store_true",
+                        help="Use pretrained Qwen word embeddings (frozen)")
+    
+    # Temporal analysis
+    parser.add_argument("--enable_temporal", action="store_true",
+                        help="Enable temporal analysis (requires timestamp column)")
+    parser.add_argument("--timestamp_column", type=str, default=None,
+                        help="Column name for timestamps in data")
 
 
 def config_from_args(args: argparse.Namespace) -> PipelineConfig:
@@ -358,15 +457,24 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
     # Override with command line arguments
     if hasattr(args, "dataset"):
         config.data.dataset = args.dataset
+        
+        # Apply dataset-specific defaults if available
+        if args.dataset in DATASET_CONFIGS:
+            ds_config = DATASET_CONFIGS[args.dataset]
+            config.bow.vocab_size = ds_config.get("vocab_size", config.bow.vocab_size)
+            config.model.num_topics = ds_config.get("num_topics", config.model.num_topics)
+            config.bow.min_doc_freq = ds_config.get("min_doc_freq", config.bow.min_doc_freq)
+            config.bow.language = ds_config.get("language", config.bow.language)
+    
     if hasattr(args, "mode"):
         config.embedding.mode = args.mode
     if hasattr(args, "dev"):
         config.dev_mode = args.dev
     
-    # Training args
-    if hasattr(args, "num_topics"):
+    # Training args - command line overrides dataset defaults
+    if hasattr(args, "num_topics") and args.num_topics != 20:  # Only if explicitly set
         config.model.num_topics = args.num_topics
-    if hasattr(args, "vocab_size"):
+    if hasattr(args, "vocab_size") and args.vocab_size != 5000:  # Only if explicitly set
         config.bow.vocab_size = args.vocab_size
     if hasattr(args, "hidden_dim"):
         config.model.hidden_dim = args.hidden_dim
@@ -387,10 +495,130 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
     if hasattr(args, "patience"):
         config.model.patience = args.patience
     
+    # Word embeddings - default is True (train from scratch)
+    if hasattr(args, "no_train_word_embeddings") and args.no_train_word_embeddings:
+        config.model.train_word_embeddings = False
+    else:
+        config.model.train_word_embeddings = True
+    
+    # Temporal analysis
+    if hasattr(args, "enable_temporal"):
+        config.visualization.enable_temporal = args.enable_temporal
+    if hasattr(args, "timestamp_column") and args.timestamp_column:
+        config.data.timestamp_column = args.timestamp_column
+    
     return config
 
 
+# ============================================================================
+# Parameter Constraints - Parameter constraint definitions for validating frontend inputs
+# ============================================================================
+
+PARAM_CONSTRAINTS = {
+    "num_topics": {
+        "type": "int",
+        "min": 5,
+        "max": 100,
+        "default": 20,
+        "options": [5, 10, 15, 20, 25, 30, 40, 50, 75, 100],
+        "description": "Number of topics, recommended to choose based on dataset size"
+    },
+    "vocab_size": {
+        "type": "int",
+        "min": 1000,
+        "max": 20000,
+        "default": 5000,
+        "options": [1000, 2000, 3000, 5000, 8000, 10000, 15000, 20000],
+        "description": "Vocabulary size, recommended: sqrt(num_docs) * 50"
+    },
+    "hidden_dim": {
+        "type": "int",
+        "min": 128,
+        "max": 1024,
+        "default": 512,
+        "options": [256, 512, 768, 1024],
+        "description": "Encoder hidden layer dimension"
+    },
+    "epochs": {
+        "type": "int",
+        "min": 10,
+        "max": 500,
+        "default": 50,
+        "options": [20, 30, 50, 100, 150, 200],
+        "description": "Number of training epochs"
+    },
+    "batch_size": {
+        "type": "int",
+        "min": 8,
+        "max": 512,
+        "default": 64,
+        "options": [16, 32, 64, 128, 256],
+        "description": "Batch size"
+    },
+    "learning_rate": {
+        "type": "float",
+        "min": 0.00001,
+        "max": 0.1,
+        "default": 0.002,
+        "options": [0.0001, 0.0005, 0.001, 0.002, 0.005, 0.01],
+        "description": "Learning rate"
+    },
+}
+
+
+def validate_params(params: dict) -> tuple:
+    """
+    Validate if parameters are valid
+    
+    Args:
+        params: Parameter dictionary, e.g., {"num_topics": 20, "vocab_size": 5000}
+        
+    Returns:
+        (is_valid: bool, error_message: str)
+        
+    Example:
+        is_valid, msg = validate_params({"num_topics": 200})
+        # is_valid = False, msg = "num_topics=200 exceeds maximum 100"
+    """
+    for param_name, value in params.items():
+        if param_name not in PARAM_CONSTRAINTS:
+            continue
+        
+        constraints = PARAM_CONSTRAINTS[param_name]
+        
+        # Type check
+        expected_type = constraints.get("type", "int")
+        if expected_type == "int" and not isinstance(value, int):
+            return False, f"{param_name} must be an integer, got {type(value).__name__}"
+        if expected_type == "float" and not isinstance(value, (int, float)):
+            return False, f"{param_name} must be a number, got {type(value).__name__}"
+        
+        # Range check
+        if "min" in constraints and value < constraints["min"]:
+            return False, f"{param_name}={value} is below minimum {constraints['min']}"
+        if "max" in constraints and value > constraints["max"]:
+            return False, f"{param_name}={value} exceeds maximum {constraints['max']}"
+    
+    return True, "OK"
+
+
+def get_param_options() -> dict:
+    """
+    Get all parameter options - for frontend dropdown menus
+    
+    Returns:
+        {
+            "num_topics": {"options": [5, 10, ...], "default": 20, "description": "..."},
+            ...
+        }
+    """
+    return PARAM_CONSTRAINTS
+
+
+# ============================================================================
 # Predefined configurations for common use cases
+# ============================================================================
+
 PRESET_CONFIGS = {
     "small": {
         "num_topics": 10,

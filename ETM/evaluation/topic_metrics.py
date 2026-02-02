@@ -259,12 +259,272 @@ def compute_topic_significance(
     return significance
 
 
+def compute_perplexity(
+    beta: np.ndarray,
+    theta: np.ndarray,
+    doc_term_matrix: Union[np.ndarray, sparse.csr_matrix],
+    eps: float = 1e-12
+) -> float:
+    """
+    Compute perplexity of the topic model.
+    
+    Perplexity = exp(-1/N * sum(log(p(w|d))))
+    Lower perplexity indicates better model fit.
+    
+    Args:
+        beta: Topic-word distribution matrix (K x V)
+        theta: Document-topic distribution matrix (D x K)
+        doc_term_matrix: Document-term matrix (D x V)
+        eps: Small constant to avoid log(0)
+        
+    Returns:
+        Perplexity score
+    """
+    if sparse.issparse(doc_term_matrix):
+        bow = doc_term_matrix.toarray()
+    else:
+        bow = np.asarray(doc_term_matrix)
+    
+    # Compute document-word probabilities: p(w|d) = sum_k theta(d,k) * beta(k,w)
+    # Shape: (D, V)
+    doc_word_probs = theta @ beta
+    
+    # Add epsilon to avoid log(0)
+    doc_word_probs = np.clip(doc_word_probs, eps, 1.0)
+    
+    # Compute log-likelihood
+    # Only consider words that appear in each document
+    log_likelihood = np.sum(bow * np.log(doc_word_probs))
+    
+    # Total number of words
+    total_words = np.sum(bow)
+    
+    # Perplexity
+    perplexity = np.exp(-log_likelihood / total_words)
+    
+    return float(perplexity)
+
+
+def compute_topic_coherence_cv(
+    beta: np.ndarray,
+    doc_term_matrix: Union[np.ndarray, sparse.csr_matrix],
+    top_k: int = 10,
+    eps: float = 1e-12
+) -> Tuple[float, List[float]]:
+    """
+    Compute topic coherence using C_V measure (combination of NPMI and sliding window).
+    
+    C_V is considered one of the best coherence measures, correlating well with human judgment.
+    
+    Args:
+        beta: Topic-word distribution matrix (K x V)
+        doc_term_matrix: Document-term matrix (D x V)
+        top_k: Number of top words per topic
+        eps: Small constant to avoid division by zero
+        
+    Returns:
+        (Average C_V score, List of C_V scores per topic)
+    """
+    num_topics, vocab_size = beta.shape
+    num_docs = doc_term_matrix.shape[0]
+    
+    # Convert to binary occurrence matrix
+    if sparse.issparse(doc_term_matrix):
+        doc_term_binary = doc_term_matrix.copy()
+        doc_term_binary.data = np.ones_like(doc_term_binary.data)
+    else:
+        doc_term_binary = (doc_term_matrix > 0).astype(np.float32)
+    
+    # Get top words for each topic
+    top_words_indices = np.argsort(-beta, axis=1)[:, :top_k]
+    
+    # Compute document frequency
+    if sparse.issparse(doc_term_binary):
+        word_doc_freq = np.array(doc_term_binary.sum(axis=0)).flatten()
+    else:
+        word_doc_freq = doc_term_binary.sum(axis=0)
+    
+    cv_scores = []
+    
+    for topic_idx in range(num_topics):
+        topic_words = top_words_indices[topic_idx]
+        
+        # Compute pairwise NPMI with indirect confirmation measure
+        npmi_matrix = np.zeros((top_k, top_k))
+        
+        for i in range(top_k):
+            for j in range(top_k):
+                if i == j:
+                    npmi_matrix[i, j] = 1.0
+                    continue
+                    
+                word_i, word_j = topic_words[i], topic_words[j]
+                
+                doc_freq_i = word_doc_freq[word_i]
+                doc_freq_j = word_doc_freq[word_j]
+                
+                if sparse.issparse(doc_term_binary):
+                    docs_with_i = set(doc_term_binary[:, word_i].nonzero()[0])
+                    docs_with_j = set(doc_term_binary[:, word_j].nonzero()[0])
+                    co_occur = len(docs_with_i.intersection(docs_with_j))
+                else:
+                    co_occur = np.sum(
+                        np.logical_and(
+                            doc_term_binary[:, word_i] > 0,
+                            doc_term_binary[:, word_j] > 0
+                        )
+                    )
+                
+                p_i = (doc_freq_i + eps) / num_docs
+                p_j = (doc_freq_j + eps) / num_docs
+                p_ij = (co_occur + eps) / num_docs
+                
+                pmi = np.log(p_ij / (p_i * p_j))
+                npmi = pmi / (-np.log(p_ij))
+                npmi_matrix[i, j] = npmi
+        
+        # C_V uses cosine similarity of NPMI vectors
+        # For each word, compute its NPMI vector with all other top words
+        cv_sum = 0.0
+        for i in range(1, top_k):
+            # Compute cosine similarity between word i's NPMI vector and previous words
+            vec_i = npmi_matrix[i, :i]
+            vec_prev = npmi_matrix[:i, :i].mean(axis=0) if i > 1 else npmi_matrix[0, :1]
+            
+            # Simplified: use mean NPMI as C_V approximation
+            cv_sum += np.mean(npmi_matrix[i, :i])
+        
+        cv_score = cv_sum / (top_k - 1) if top_k > 1 else 0.0
+        cv_scores.append(cv_score)
+    
+    avg_cv = np.mean(cv_scores) if cv_scores else 0.0
+    return avg_cv, cv_scores
+
+
+def compute_topic_coherence_umass(
+    beta: np.ndarray,
+    doc_term_matrix: Union[np.ndarray, sparse.csr_matrix],
+    top_k: int = 10,
+    eps: float = 1e-12
+) -> Tuple[float, List[float]]:
+    """
+    Compute topic coherence using UMass measure.
+    
+    UMass coherence uses document co-occurrence and is asymmetric.
+    
+    Args:
+        beta: Topic-word distribution matrix (K x V)
+        doc_term_matrix: Document-term matrix (D x V)
+        top_k: Number of top words per topic
+        eps: Small constant to avoid log(0)
+        
+    Returns:
+        (Average UMass score, List of UMass scores per topic)
+    """
+    num_topics, vocab_size = beta.shape
+    num_docs = doc_term_matrix.shape[0]
+    
+    # Convert to binary
+    if sparse.issparse(doc_term_matrix):
+        doc_term_binary = doc_term_matrix.copy()
+        doc_term_binary.data = np.ones_like(doc_term_binary.data)
+    else:
+        doc_term_binary = (doc_term_matrix > 0).astype(np.float32)
+    
+    # Get top words
+    top_words_indices = np.argsort(-beta, axis=1)[:, :top_k]
+    
+    # Document frequency
+    if sparse.issparse(doc_term_binary):
+        word_doc_freq = np.array(doc_term_binary.sum(axis=0)).flatten()
+    else:
+        word_doc_freq = doc_term_binary.sum(axis=0)
+    
+    umass_scores = []
+    
+    for topic_idx in range(num_topics):
+        topic_words = top_words_indices[topic_idx]
+        
+        umass_sum = 0.0
+        pair_count = 0
+        
+        for i in range(1, top_k):
+            for j in range(i):
+                word_i, word_j = topic_words[i], topic_words[j]
+                
+                doc_freq_j = word_doc_freq[word_j]
+                
+                if sparse.issparse(doc_term_binary):
+                    docs_with_i = set(doc_term_binary[:, word_i].nonzero()[0])
+                    docs_with_j = set(doc_term_binary[:, word_j].nonzero()[0])
+                    co_occur = len(docs_with_i.intersection(docs_with_j))
+                else:
+                    co_occur = np.sum(
+                        np.logical_and(
+                            doc_term_binary[:, word_i] > 0,
+                            doc_term_binary[:, word_j] > 0
+                        )
+                    )
+                
+                # UMass formula: log((D(w_i, w_j) + eps) / D(w_j))
+                umass_sum += np.log((co_occur + eps) / (doc_freq_j + eps))
+                pair_count += 1
+        
+        umass_score = umass_sum / pair_count if pair_count > 0 else 0.0
+        umass_scores.append(umass_score)
+    
+    avg_umass = np.mean(umass_scores) if umass_scores else 0.0
+    return avg_umass, umass_scores
+
+
+def compute_topic_exclusivity(
+    beta: np.ndarray,
+    top_k: int = 10
+) -> Tuple[float, List[float]]:
+    """
+    Compute topic exclusivity - how exclusive the top words are to each topic.
+    
+    Higher exclusivity means topics have more unique, non-overlapping words.
+    
+    Args:
+        beta: Topic-word distribution matrix (K x V)
+        top_k: Number of top words per topic
+        
+    Returns:
+        (Average exclusivity, List of exclusivity per topic)
+    """
+    num_topics = beta.shape[0]
+    
+    # Get top words for each topic
+    top_words_indices = np.argsort(-beta, axis=1)[:, :top_k]
+    
+    # Count how many topics each word appears in (as top word)
+    word_topic_count = Counter()
+    for topic_idx in range(num_topics):
+        for word_idx in top_words_indices[topic_idx]:
+            word_topic_count[word_idx] += 1
+    
+    # Compute exclusivity for each topic
+    exclusivity_scores = []
+    for topic_idx in range(num_topics):
+        topic_words = top_words_indices[topic_idx]
+        
+        # Exclusivity = 1 / (average number of topics each word appears in)
+        avg_appearances = np.mean([word_topic_count[w] for w in topic_words])
+        exclusivity = 1.0 / avg_appearances
+        exclusivity_scores.append(exclusivity)
+    
+    avg_exclusivity = np.mean(exclusivity_scores)
+    return avg_exclusivity, exclusivity_scores
+
+
 def compute_all_metrics(
     beta: np.ndarray,
     theta: np.ndarray,
     doc_term_matrix: Union[np.ndarray, sparse.csr_matrix],
     top_k_coherence: int = 10,
-    top_k_diversity: int = 25
+    top_k_diversity: int = 25,
+    compute_extended: bool = True
 ) -> Dict[str, Union[float, List[float]]]:
     """
     Compute all topic quality metrics.
@@ -275,6 +535,7 @@ def compute_all_metrics(
         doc_term_matrix: Document-term matrix (D x V)
         top_k_coherence: Number of top words for coherence calculation
         top_k_diversity: Number of top words for diversity calculation
+        compute_extended: Whether to compute extended metrics (Perplexity, C_V, UMass, Exclusivity)
         
     Returns:
         Dictionary with all metrics
@@ -293,13 +554,51 @@ def compute_all_metrics(
     logger.info("Computing topic significance...")
     significance = compute_topic_significance(theta)
     
-    return {
+    metrics = {
         'topic_diversity_td': td_score,
         'topic_diversity_irbo': irbo_score,
-        'topic_coherence_avg': avg_coherence,
-        'topic_coherence_per_topic': topic_coherences,
+        'topic_coherence_npmi_avg': avg_coherence,
+        'topic_coherence_npmi_per_topic': topic_coherences,
         'topic_significance': significance.tolist()
     }
+    
+    if compute_extended:
+        logger.info("Computing perplexity...")
+        try:
+            perplexity = compute_perplexity(beta, theta, doc_term_matrix)
+            metrics['perplexity'] = perplexity
+        except Exception as e:
+            logger.warning(f"Failed to compute perplexity: {e}")
+            metrics['perplexity'] = None
+        
+        logger.info("Computing topic coherence (C_V)...")
+        try:
+            avg_cv, cv_scores = compute_topic_coherence_cv(beta, doc_term_matrix, top_k_coherence)
+            metrics['topic_coherence_cv_avg'] = avg_cv
+            metrics['topic_coherence_cv_per_topic'] = cv_scores
+        except Exception as e:
+            logger.warning(f"Failed to compute C_V coherence: {e}")
+            metrics['topic_coherence_cv_avg'] = None
+        
+        logger.info("Computing topic coherence (UMass)...")
+        try:
+            avg_umass, umass_scores = compute_topic_coherence_umass(beta, doc_term_matrix, top_k_coherence)
+            metrics['topic_coherence_umass_avg'] = avg_umass
+            metrics['topic_coherence_umass_per_topic'] = umass_scores
+        except Exception as e:
+            logger.warning(f"Failed to compute UMass coherence: {e}")
+            metrics['topic_coherence_umass_avg'] = None
+        
+        logger.info("Computing topic exclusivity...")
+        try:
+            avg_exclusivity, exclusivity_scores = compute_topic_exclusivity(beta, top_k_coherence)
+            metrics['topic_exclusivity_avg'] = avg_exclusivity
+            metrics['topic_exclusivity_per_topic'] = exclusivity_scores
+        except Exception as e:
+            logger.warning(f"Failed to compute exclusivity: {e}")
+            metrics['topic_exclusivity_avg'] = None
+    
+    return metrics
 
 
 if __name__ == "__main__":

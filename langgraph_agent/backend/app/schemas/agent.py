@@ -129,17 +129,11 @@ class StepUpdate(BaseModel):
 
 
 class TaskResponse(BaseModel):
-    """Response for task status query - 支持任务中心轮询"""
+    """Response for task status query"""
     task_id: str
     status: TaskStatus
     current_step: Optional[str] = None
     progress: float = Field(default=0, ge=0, le=100)
-    message: Optional[str] = None  # 当前状态消息
-    
-    # 任务配置信息（用于任务中心显示）
-    dataset: Optional[str] = None
-    mode: Optional[str] = None
-    num_topics: Optional[int] = None
     
     # Results (populated when completed)
     metrics: Optional[Dict[str, float]] = None
@@ -162,9 +156,6 @@ class TaskResponse(BaseModel):
                 "status": "completed",
                 "current_step": "visualization",
                 "progress": 100,
-                "dataset": "socialTwitter",
-                "mode": "zero_shot",
-                "num_topics": 20,
                 "metrics": {
                     "topic_coherence_avg": 0.58,
                     "topic_diversity_td": 0.72
@@ -193,21 +184,3 @@ class ChatResponse(BaseModel):
     action: Optional[str] = None  # e.g., "start_task", "show_results"
     task_id: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
-
-
-class SuggestionsRequest(BaseModel):
-    """Request for intelligent suggestions"""
-    context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Current UI context")
-
-
-class SuggestionItem(BaseModel):
-    """A single suggestion item"""
-    text: str
-    action: str
-    description: str
-    data: Optional[Dict[str, Any]] = None
-
-
-class SuggestionsResponse(BaseModel):
-    """Response containing intelligent suggestions"""
-    suggestions: List[SuggestionItem]
