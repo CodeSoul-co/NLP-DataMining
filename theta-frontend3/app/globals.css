@@ -326,7 +326,7 @@
   50% { box-shadow: 0 0 14px 3px rgba(59, 130, 246, 0.5); }
 }
 
-/* 首页 Hero 内 AI 助手：不缩放，原尺寸展示 */
+/* 首页 Hero 内猫咪科学家：不缩放，原尺寸展示 */
 .page-bg-effect__ghost-text-track {
   display: flex;
   flex-wrap: nowrap;
@@ -577,4 +577,33 @@
 .prose :where(pre):not(:where([class~="not-prose"] *)) {
   margin-top: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+/* ========== 团队页面：翻转卡片动效 ========== */
+.team-card-flip {
+  perspective: 1000px;
+}
+
+.team-card-flip-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.7s ease-out;
+  transform-style: preserve-3d;
+}
+
+.team-card-flip:hover .team-card-flip-inner {
+  transform: rotateY(180deg);
+}
+
+.team-card-front,
+.team-card-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.team-card-back {
+  transform: rotateY(180deg);
 }

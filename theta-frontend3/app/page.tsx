@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useCallback, useRef } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
@@ -27,6 +28,8 @@ import {
   FileText,
   Minus,
   Plus,
+  Infinity,
+  Zap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -170,7 +173,7 @@ export default function LandingPage() {
   const [isAiLoading, setIsAiLoading] = useState(false)
   const chatCardRef = useRef<HTMLDivElement>(null)
   const [howItWorksStep, setHowItWorksStep] = useState(0)
-  const [pricingYearly, setPricingYearly] = useState(true)
+  const [pricingMode, setPricingMode] = useState<"per-use" | "monthly" | "yearly">("per-use")
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(null)
   const [showCiteModal, setShowCiteModal] = useState(false)
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
@@ -363,20 +366,20 @@ export default function LandingPage() {
         className="sticky top-0 z-50 bg-white/98 backdrop-blur-md border-b border-slate-200/80 shadow-sm shadow-slate-900/5"
       >
         <div className="max-w-7xl mx-auto px-5 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
-          {/* Left: Logo */}
+          {/* Left: Logo - 使用上传的 THETA 图片（青绿+橙边） */}
           <div className="flex items-center">
-            <img src="/theta-logo.png" alt="Code Soul" className="h-8 sm:h-9 w-auto object-contain" />
+            <img src="/theta-logo.png" alt="THETA" className="h-8 sm:h-9 w-auto object-contain" />
           </div>
 
           {/* Center: Navigation Links */}
           <nav className="hidden md:flex items-center gap-7">
             {[
               { label: "首页", href: "#" },
-              { label: "关于THETA", href: "#about" },
+              { label: "关于THETA", href: "#core-features" },
               { label: "案例库", href: "#cases" },
               { label: "文档", href: "#docs" },
-              { label: "团队成员", href: "#team" },
-              { label: "帮助中心", href: "#help" },
+              { label: "团队成员", href: "/team" },
+              { label: "帮助中心", href: "#faq" },
             ].map((link) => (
               <a
                 key={link.label}
@@ -479,7 +482,7 @@ export default function LandingPage() {
               className="flex flex-col justify-center min-w-0"
             >
               <h1 className="hero-title text-3xl sm:text-4xl md:text-5xl lg:text-[3rem] text-slate-900 mb-4 leading-[1.2] text-balance">
-                智能社会科学分析平台
+                零代码社科文本挖掘工作台
               </h1>
               <p className="hero-typewriter text-lg sm:text-xl md:text-2xl text-blue-600 mb-4 min-h-[2.25rem] sm:min-h-[2.5rem] flex items-center">
                 <span>{typewriterText}</span>
@@ -533,10 +536,10 @@ export default function LandingPage() {
                   {/* Chat Header */}
                   <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50/60 shrink-0">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-sm">
-                        <Sparkles className="w-4 h-4 text-white" />
+                      <div className="w-10 h-10 rounded-xl overflow-hidden shadow-sm flex items-center justify-center bg-slate-100/50">
+                        <img src="/ai-avatar.png" alt="猫咪科学家" className="w-[180%] h-[180%] object-contain scale-75" />
                       </div>
-                      <span className="font-semibold text-slate-800 tracking-tight">THETA AI 助手</span>
+                      <span className="font-semibold text-slate-800 tracking-tight">猫咪科学家</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -550,8 +553,8 @@ export default function LandingPage() {
                       <>
                         {/* 使用样例：AI 欢迎语 */}
                         <div className="flex gap-3">
-                          <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                          <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-slate-100/50">
+                            <img src="/ai-avatar.png" alt="" className="w-[140%] h-[140%] object-contain scale-75" aria-hidden />
                           </div>
                           <div className="bg-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%]">
                             <p className="text-sm text-slate-700 leading-relaxed">{LANDING_GREETING}</p>
@@ -567,8 +570,8 @@ export default function LandingPage() {
                         </div>
                         {/* 使用样例：AI 回复（含情绪趋势图） */}
                         <div className="flex gap-3">
-                          <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                            <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                          <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-slate-100/50">
+                            <img src="/ai-avatar.png" alt="" className="w-[140%] h-[140%] object-contain scale-75" aria-hidden />
                           </div>
                           <div className="bg-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] space-y-3">
                             <p className="text-xs text-slate-500 flex items-center gap-2">
@@ -634,8 +637,8 @@ export default function LandingPage() {
                             className={isUser ? "flex justify-end" : "flex gap-3"}
                           >
                             {!isUser && (
-                              <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-slate-100/50">
+                                <img src="/ai-avatar.png" alt="" className="w-[140%] h-[140%] object-contain scale-75" aria-hidden />
                               </div>
                             )}
                             <div
@@ -662,8 +665,8 @@ export default function LandingPage() {
                     )}
                     {isAiLoading && (
                       <div className="flex gap-3">
-                        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                          <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                        <div className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-slate-100/50">
+                          <img src="/ai-avatar.png" alt="" className="w-[140%] h-[140%] object-contain scale-75" aria-hidden />
                         </div>
                         <div className="bg-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
@@ -723,58 +726,84 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Feature Highlights Grid */}
-      <section className="max-w-7xl mx-auto px-5 sm:px-6 py-20 sm:py-24">
+      {/* 二、核心功能引擎 - 三大横向模块（图文交替） */}
+      <section id="core-features" className="max-w-7xl mx-auto px-5 sm:px-6 py-20 sm:py-24">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
           className="text-center mb-14"
         >
-          <h2 className="section-heading text-2xl sm:text-3xl md:text-[1.75rem] mb-3">核心功能</h2>
-          <p className="text-slate-600 max-w-xl mx-auto text-[15px] sm:text-base leading-relaxed">
-            基于先进 AI 技术，为您的研究提供全方位支持
+          <h2 className="section-heading text-2xl sm:text-3xl md:text-[1.75rem] mb-3">核心功能引擎：重构社科研究生产力</h2>
+          <p className="text-slate-600 max-w-2xl mx-auto text-[15px] sm:text-base leading-relaxed">
+            集成大语言模型与主题模型，打造遵循严谨学术范式的一站式研究工作流。
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-          {[
-            {
-              icon: Sparkles,
-              title: "自动清洗",
-              titleEn: "Auto-Cleaning",
-              description: "智能识别并处理缺失值、异常值，自动标准化数据格式",
-            },
-            {
-              icon: BrainCircuit,
-              title: "主题建模",
-              titleEn: "Topic Modeling",
-              description: "基于深度学习的主题提取，发现文本中的隐藏模式",
-            },
-            {
-              icon: MessageSquare,
-              title: "情感分析",
-              titleEn: "Sentiment Analysis",
-              description: "多维度情感识别，精准把握用户态度与情绪倾向",
-            },
-          ].map((feature, index) => (
-            <motion.div
-              key={feature.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.6 + index * 0.1 }}
-            >
-              <Card className="border border-slate-200/90 bg-white hover:border-blue-200/80 hover:shadow-lg hover:shadow-slate-200/30 transition-all p-7 sm:p-8 rounded-2xl h-full">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-5 shadow-sm">
-                  <feature.icon className="w-6 h-6 sm:w-7 sm:h-7" />
-                </div>
-                <h3 className="text-lg sm:text-xl font-semibold text-slate-900 mb-1 tracking-tight">{feature.title}</h3>
-                <p className="text-xs sm:text-sm text-blue-600 mb-3 font-medium tracking-wide">{feature.titleEn}</p>
-                <p className="text-slate-600 text-sm sm:text-base leading-[1.65]">{feature.description}</p>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+        {/* 模块一：全栈式主题建模 - 左文案 | 右概念图 */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center mb-16 sm:mb-20"
+        >
+          <div>
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4">全栈式主题建模</h3>
+            <p className="text-slate-600 leading-[1.7] mb-4">
+              不再受限于单一模型。Theta 集成了从经典统计学到最新深度学习的完整算法库，灵活适配短文本、长文档及动态演化数据，满足多元化的研究目标。
+            </p>
+            <p className="text-xs text-slate-500">LDA · ETM · CTM · DTM · <strong className="text-blue-600">BERTopic</strong> · <strong className="text-blue-600">LLM-Topic</strong></p>
+          </div>
+          <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50 to-blue-50/30 aspect-video overflow-hidden min-h-[200px]">
+            <img src="/1.png" alt="全栈式主题建模" className="w-full h-full object-cover" />
+          </div>
+        </motion.div>
+
+        {/* 模块二：云端即时数据处理 - 左概念图 | 右文案 */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center mb-16 sm:mb-20"
+        >
+          <div className="order-2 lg:order-1 rounded-2xl border border-slate-200/90 bg-gradient-to-br from-blue-50/50 to-slate-50 aspect-video overflow-hidden min-h-[200px]">
+            <img src="/2.png" alt="云端即时数据处理" className="w-full h-full object-cover" />
+          </div>
+          <div className="order-1 lg:order-2">
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4">云端即时数据处理</h3>
+            <p className="text-slate-600 leading-[1.7] mb-4">
+              告别繁琐的本地环境配置、Python 库依赖与算力瓶颈。
+            </p>
+            <ul className="space-y-2 text-slate-600">
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> 零配置快速上手</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> 在线交互式处理</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> 安全云端算力</li>
+            </ul>
+          </div>
+        </motion.div>
+
+        {/* 模块三：交互式 AI 科学家 - 左文案 | 右交互演示图 */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center"
+        >
+          <div>
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4">交互式 AI 科学家</h3>
+            <p className="text-slate-600 leading-[1.7] mb-4">
+              它不仅是一个图表生成器，更是一位深谙学术规范的虚拟合作者。猫咪科学家拒绝千篇一律的模板化描述，而是提供定制化的深度解读。
+            </p>
+            <ul className="space-y-2 text-slate-600">
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> 非模板化深度解读</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> 图表级多轮追问</li>
+              <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" /> 研究假设辅助验证</li>
+            </ul>
+          </div>
+          <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-br from-slate-50 to-indigo-50/20 aspect-video overflow-hidden min-h-[200px]">
+            <img src="/3.png" alt="交互式 AI 科学家" className="w-full h-full object-cover" />
+          </div>
+        </motion.div>
       </section>
 
       {/* 三、使用教程 How it Works - 左右布局 + 图文轮播 */}
@@ -947,62 +976,124 @@ export default function LandingPage() {
           <div className="inline-flex items-center gap-3 p-1.5 rounded-full bg-slate-200/60">
             <button
               type="button"
-              onClick={() => setPricingYearly(false)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${!pricingYearly ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+              onClick={() => setPricingMode("per-use")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${pricingMode === "per-use" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+            >
+              按次付费
+            </button>
+            <button
+              type="button"
+              onClick={() => setPricingMode("monthly")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${pricingMode === "monthly" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
             >
               按月付费
             </button>
             <button
               type="button"
-              onClick={() => setPricingYearly(true)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${pricingYearly ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
+              onClick={() => setPricingMode("yearly")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${pricingMode === "yearly" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"}`}
             >
               按年付费 <span className="text-green-600 text-xs">省 17%</span>
             </button>
           </div>
         </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto"
-        >
-          {PRICING_PLANS.map((plan, index) => (
-            <Card
-              key={plan.name}
-              className={`relative border rounded-2xl p-6 flex flex-col ${plan.recommended ? "border-blue-300 shadow-lg shadow-blue-100/40 scale-105 md:scale-105" : "border-slate-200/90 bg-white"}`}
-            >
-              {plan.recommended && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blue-600 text-white text-xs font-semibold">
-                  热门推荐
-                </span>
-              )}
-              <h3 className="text-lg font-bold text-slate-900 mb-1">{plan.name}</h3>
-              <p className="text-sm text-slate-500 mb-4">{plan.desc}</p>
-              <div className="mb-6">
-                <span className="text-3xl font-bold text-slate-900">
-                  ¥{pricingYearly ? plan.priceYear : plan.priceMonth}
-                </span>
-                <span className="text-slate-500 text-sm ml-1">/ {pricingYearly ? "年" : "月"}</span>
-              </div>
-              <ul className="space-y-2 mb-6 flex-1">
-                {plan.features.map((f) => (
-                  <li key={f} className="text-sm text-slate-600 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                className={plan.recommended ? "bg-blue-600 hover:bg-blue-700" : "border-slate-200"}
-                variant={plan.recommended ? "default" : "outline"}
-                onClick={handleStartAnalysis}
+        {pricingMode === "per-use" ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto"
+          >
+            {[
+              { size: "500M", price: 29, desc: "适合小规模数据", recommended: false },
+              { size: "20G", price: 299, desc: "适合大规模项目", recommended: true },
+              { size: "100G", price: 999, desc: "上限封顶，超值选择", recommended: false },
+            ].map((plan) => (
+              <Card
+                key={plan.size}
+                className={`relative border rounded-2xl p-6 flex flex-col ${plan.recommended ? "border-blue-300 shadow-lg shadow-blue-100/40 scale-105 md:scale-105" : "border-slate-200/90 bg-white"}`}
               >
-                立即开始
-              </Button>
-            </Card>
-          ))}
-        </motion.div>
+                {plan.recommended && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blue-600 text-white text-xs font-semibold">
+                    热门推荐
+                  </span>
+                )}
+                <h3 className="text-lg font-bold text-slate-900 mb-1">{plan.size}</h3>
+                <p className="text-sm text-slate-500 mb-4">{plan.desc}</p>
+                <div className="mb-6">
+                  <span className="text-3xl font-bold text-slate-900">
+                    ¥{plan.price}
+                  </span>
+                  <span className="text-slate-500 text-sm ml-1">/ 次</span>
+                </div>
+                <ul className="space-y-2 mb-6 flex-1">
+                  <li className="text-sm text-slate-600 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    按上传数据大小计费
+                  </li>
+                  <li className="text-sm text-slate-600 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    {plan.size === "100G" ? "100G 为上限，超出不再收费" : `单次处理 ${plan.size} 数据`}
+                  </li>
+                  <li className="text-sm text-slate-600 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    永久有效，无时间限制
+                  </li>
+                </ul>
+                <Button
+                  className={plan.recommended ? "bg-blue-600 hover:bg-blue-700" : "border-slate-200"}
+                  variant={plan.recommended ? "default" : "outline"}
+                  onClick={handleStartAnalysis}
+                >
+                  立即开始
+                </Button>
+              </Card>
+            ))}
+          </motion.div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto"
+          >
+            {PRICING_PLANS.map((plan, index) => (
+              <Card
+                key={plan.name}
+                className={`relative border rounded-2xl p-6 flex flex-col ${plan.recommended ? "border-blue-300 shadow-lg shadow-blue-100/40 scale-105 md:scale-105" : "border-slate-200/90 bg-white"}`}
+              >
+                {plan.recommended && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blue-600 text-white text-xs font-semibold">
+                    热门推荐
+                  </span>
+                )}
+                <h3 className="text-lg font-bold text-slate-900 mb-1">{plan.name}</h3>
+                <p className="text-sm text-slate-500 mb-4">{plan.desc}</p>
+                <div className="mb-6">
+                  <span className="text-3xl font-bold text-slate-900">
+                    ¥{pricingMode === "yearly" ? plan.priceYear : plan.priceMonth}
+                  </span>
+                  <span className="text-slate-500 text-sm ml-1">/ {pricingMode === "yearly" ? "年" : "月"}</span>
+                </div>
+                <ul className="space-y-2 mb-6 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="text-sm text-slate-600 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  className={plan.recommended ? "bg-blue-600 hover:bg-blue-700" : "border-slate-200"}
+                  variant={plan.recommended ? "default" : "outline"}
+                  onClick={handleStartAnalysis}
+                >
+                  立即开始
+                </Button>
+              </Card>
+            ))}
+          </motion.div>
+        )}
       </section>
 
       {/* 六、常见问题 FAQ */}
@@ -1071,10 +1162,10 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-8 lg:gap-6">
             {/* 第一列：品牌与愿景 */}
             <div className="col-span-2 md:col-span-1">
-              <div className="flex items-center gap-2 mb-3">
-                <img src="/theta-logo.png" alt="Code Soul" className="h-6 w-auto object-contain opacity-90" />
-                <span className="text-sm font-semibold text-slate-600">·</span>
-                <a href="https://github.com/CodeSoul-co" target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-600 hover:text-blue-600">CodeSoul</a>
+              <div className="flex items-center mb-3">
+                <a href="https://github.com/CodeSoul-co" target="_blank" rel="noopener noreferrer" className="inline-flex items-center">
+                  <img src="/codesoul-logo.png" alt="CodeSoul" className="h-10 sm:h-12 w-auto object-contain hover:opacity-80 transition-opacity" />
+                </a>
               </div>
               <p className="text-xs text-slate-500 mb-2">Theta：洞见，先于思考</p>
               <a href="mailto:duanzhenke@code-soul.com" className="text-xs text-blue-600 hover:underline">
@@ -1094,7 +1185,7 @@ export default function LandingPage() {
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-3">支持与社区</h4>
               <ul className="space-y-2 text-sm text-slate-600">
-                <li><a href="#help" className="hover:text-blue-600">帮助中心</a></li>
+                <li><a href="#faq" className="hover:text-blue-600">帮助中心</a></li>
                 <li><a href="#community" className="hover:text-blue-600">学术交流群</a></li>
                 <li>
                   <button type="button" onClick={() => setShowCiteModal(true)} className="hover:text-blue-600 text-left">
@@ -1119,7 +1210,7 @@ export default function LandingPage() {
               <ul className="space-y-2 text-sm text-slate-600">
                 <li><a href="#about" className="hover:text-blue-600">关于我们</a></li>
                 <li><a href="#hiring" className="hover:text-blue-600">加入我们</a></li>
-                <li><a href="#security" className="hover:text-blue-600">安全白皮书</a></li>
+                <li><Link href="/security" className="hover:text-blue-600">安全白皮书</Link></li>
                 <li><a href="#terms" className="hover:text-blue-600">用户协议</a></li>
                 <li><a href="#privacy" className="hover:text-blue-600">隐私政策</a></li>
                 <li className="text-slate-400 text-xs">ICP 备案号 / 公安联网备案</li>
@@ -1127,7 +1218,7 @@ export default function LandingPage() {
             </div>
           </div>
           <p className="text-center text-slate-400 text-xs mt-10 pt-6 border-t border-slate-200/80">
-            &copy; 2024 THETA · 智能社会科学分析平台
+            &copy; 2024 THETA · 零代码社科文本挖掘工作台
           </p>
         </div>
       </footer>
@@ -1141,13 +1232,13 @@ export default function LandingPage() {
           </DialogHeader>
           <pre className="p-4 rounded-lg bg-slate-100 text-sm text-slate-800 overflow-x-auto font-mono whitespace-pre-wrap">
 {`@software{theta2024,
-  title = {THETA: 智能社会科学分析平台},
+  title = {THETA: 零代码社科文本挖掘工作台},
   author = {CodeSoul},
   year = {2024},
   url = {https://github.com/CodeSoul-co/THETA}
 }`}
           </pre>
-          <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(`@software{theta2024,\n  title = {THETA: 智能社会科学分析平台},\n  author = {CodeSoul},\n  year = {2024},\n  url = {https://github.com/CodeSoul-co/THETA}\n}`); }}>
+          <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(`@software{theta2024,\n  title = {THETA: 零代码社科文本挖掘工作台},\n  author = {CodeSoul},\n  year = {2024},\n  url = {https://github.com/CodeSoul-co/THETA}\n}`); }}>
             复制 BibTeX
           </Button>
         </DialogContent>
@@ -1158,9 +1249,7 @@ export default function LandingPage() {
         <DialogContent className="sm:max-w-md bg-white">
           <DialogHeader className="space-y-3 pb-2">
             <div className="flex items-center justify-center mb-2">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg">
-                <BrainCircuit className="w-8 h-8 text-white" />
-              </div>
+              <img src="/theta-logo.png" alt="THETA" className="h-14 w-auto object-contain" />
             </div>
             <DialogTitle className="text-2xl font-bold text-center bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               登录 THETA

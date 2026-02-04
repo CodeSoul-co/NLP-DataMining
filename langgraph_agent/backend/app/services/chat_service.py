@@ -250,5 +250,22 @@ Just type your request and I'll help you!
             action=None
         )
 
+    def get_suggestions(self, context: Dict[str, Any]) -> list:
+        """Return context-based suggestions (list of dicts: text, action, description, data)."""
+        suggestions = []
+        if context.get("current_view") == "hub":
+            suggestions.extend([
+                {"text": "上传数据", "action": "upload", "description": "上传 CSV/Excel 开始分析", "data": None},
+                {"text": "查看数据集", "action": "list_datasets", "description": "查看已有数据集", "data": None},
+                {"text": "开始训练", "action": "start_training", "description": "选择数据集并运行训练", "data": None},
+            ])
+        else:
+            suggestions.extend([
+                {"text": "查看进度", "action": "status", "description": "查看当前任务进度", "data": None},
+                {"text": "查看结果", "action": "results", "description": "查看训练结果", "data": None},
+                {"text": "帮助", "action": "help", "description": "查看可用命令", "data": None},
+            ])
+        return suggestions
+
 
 chat_service = ChatService()

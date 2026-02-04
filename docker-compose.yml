@@ -26,10 +26,14 @@ services:
     build:
       context: ./theta-frontend3
       dockerfile: Dockerfile
+      args:
+        # 构建时传入，使用相对路径（通过 nginx 路由）
+        # 空字符串表示使用相对路径，浏览器会自动使用当前域名
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_DATACLEAN_API_URL: ${NEXT_PUBLIC_DATACLEAN_API_URL:-/dataclean}
     container_name: theta-frontend
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost
     expose:
       - "3000"
     networks:

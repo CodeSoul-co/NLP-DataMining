@@ -20,7 +20,7 @@ import {
   PanelRightClose,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
@@ -154,7 +154,8 @@ function MessageBubble({
   return (
     <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       {!isUser && (
-        <Avatar className="h-8 w-8 shrink-0 ring-2 ring-white shadow-sm">
+        <Avatar className="h-9 w-9 shrink-0 ring-2 ring-white shadow-sm overflow-hidden flex items-center justify-center bg-slate-100/50">
+          <AvatarImage src="/ai-avatar.png" alt="猫咪科学家" className="scale-75 object-contain w-[140%] h-[140%]" />
           <AvatarFallback className="bg-gradient-to-br from-blue-500 to-blue-600 text-white text-xs">
             <Sparkles className="h-4 w-4" />
           </AvatarFallback>
@@ -338,11 +339,11 @@ export function AiSidebar({
       {/* Header - constrained to sidebar width */}
       <div className="h-14 flex-shrink-0 border-b border-slate-100/80 px-3 sm:px-4 flex items-center justify-between bg-white/80 backdrop-blur-sm min-w-0 w-full">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 overflow-hidden">
-          <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0">
-            <Sparkles className="h-5 w-5 text-white shrink-0" strokeWidth={2.25} />
-          </div>
+          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl overflow-hidden shadow-lg shrink-0 flex items-center justify-center bg-slate-100/50">
+          <img src="/ai-avatar.png" alt="猫咪科学家" className="w-[140%] h-[140%] object-contain scale-75" />
+        </div>
           <div className="flex items-center gap-2 min-w-0">
-            <span className="font-bold text-slate-800 text-sm sm:text-base tracking-tight">AI 助手</span>
+            <span className="font-bold text-slate-800 text-sm sm:text-base tracking-tight">猫咪科学家</span>
             <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full">
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] text-emerald-600 font-semibold">在线</span>
@@ -396,15 +397,15 @@ export function AiSidebar({
         {chatHistory.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-72 px-8">
             <div className="relative">
-              <div className="h-24 w-24 rounded-3xl bg-gradient-to-br from-blue-100 via-blue-50 to-indigo-100 flex items-center justify-center mb-6 shadow-2xl shadow-blue-200/40">
-                <Sparkles className="h-12 w-12 text-blue-500" />
-              </div>
+              <div className="h-28 w-28 rounded-3xl overflow-hidden mb-6 shadow-2xl shadow-slate-200/50 flex items-center justify-center bg-slate-100/50">
+              <img src="/ai-avatar.png" alt="猫咪科学家" className="w-[140%] h-[140%] object-contain scale-75" />
+            </div>
               <div className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center shadow-lg animate-bounce">
                 <span className="text-white text-xs">+</span>
               </div>
             </div>
             <p className="text-sm text-slate-700 text-center leading-relaxed font-semibold">
-              开始对话，让 AI 助手帮您分析数据
+              开始对话，让猫咪科学家帮您分析数据
             </p>
             <p className="text-xs text-slate-400 text-center mt-2 font-medium">
               您也可以直接拖放文件到此处

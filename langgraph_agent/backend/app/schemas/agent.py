@@ -184,3 +184,21 @@ class ChatResponse(BaseModel):
     action: Optional[str] = None  # e.g., "start_task", "show_results"
     task_id: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
+
+
+class SuggestionItem(BaseModel):
+    """Single suggestion item"""
+    text: str = ""
+    action: str = ""
+    description: str = ""
+    data: Optional[Dict[str, Any]] = None
+
+
+class SuggestionsRequest(BaseModel):
+    """Request for context-based suggestions"""
+    context: Optional[Dict[str, Any]] = None
+
+
+class SuggestionsResponse(BaseModel):
+    """Response with list of suggestions"""
+    suggestions: List[SuggestionItem] = []

@@ -145,7 +145,7 @@ function ChatInterface({
               <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center mx-auto">
                 <BrainCircuit className="w-8 h-8 text-blue-600" />
               </div>
-              <p className="text-slate-500 text-sm">开始对话，让 AI 助手帮您分析数据</p>
+              <p className="text-slate-500 text-sm">开始对话，让猫咪科学家帮您分析数据</p>
             </div>
           </div>
         ) : (
@@ -328,7 +328,7 @@ export function WorkspaceLayout({ children, title, description, currentStep }: W
         </motion.div>
       </div>
 
-      {/* 右侧 AI 助手面板 */}
+      {/* 右侧猫咪科学家面板 */}
       <motion.aside
         initial={{ x: 100, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -338,7 +338,7 @@ export function WorkspaceLayout({ children, title, description, currentStep }: W
         <div className="border-b border-slate-200 p-4">
           <h3 className="font-semibold text-slate-900 flex items-center gap-2">
             <BrainCircuit className="w-5 h-5 text-blue-600" />
-            AI 助手
+            猫咪科学家
           </h3>
         </div>
         <ChatInterface

@@ -14,6 +14,18 @@ langchain-core>=0.1.0
 # Pydantic
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
+pydantic[email]>=2.5.0
+email-validator>=2.0.0
+
+# Database - PostgreSQL（生产）/ SQLite（本地模拟）
+asyncpg>=0.29.0
+aiosqlite>=0.19.0
+sqlalchemy[asyncio]>=2.0.0
+alembic>=1.13.0
+
+# Cache - Redis
+redis>=5.0.0
+aioredis>=2.0.0
 
 # Data Processing
 numpy>=1.24.0
@@ -28,13 +40,31 @@ matplotlib>=3.7.0
 seaborn>=0.12.0
 wordcloud>=1.9.0
 pyLDAvis>=3.4.0
-plotly>=5.18.0
 
 # Utilities
 python-dotenv>=1.0.0
 aiofiles>=23.0.0
+httpx>=0.25.0
+
+# Qwen API
+dashscope>=1.17.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0,<5.0.0
+
+# 阿里云 OSS
+oss2>=2.18.0
+
+# 阿里云 PAI (DLC 训练 + EAS 推理)
+alibabacloud-tea-openapi>=0.3.0
+alibabacloud-pai-dlc20201203>=1.0.0
+alibabacloud-credentials>=0.3.0
+
+# Task Queue (可选，轻量级方案用 Redis)
+# celery>=5.3.0
 
 # Testing
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
-httpx>=0.25.0

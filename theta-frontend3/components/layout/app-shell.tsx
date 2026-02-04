@@ -99,7 +99,7 @@ export function AppShell({
       <header className="h-14 flex-shrink-0 bg-white/90 backdrop-blur-md border-b border-slate-200/60 flex items-center justify-between px-4 sm:px-6 shadow-[0_1px_3px_rgba(0,0,0,0.05)] min-w-0">
         {/* Left: Logo */}
         <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 overflow-hidden">
-          <img src="/theta-logo.png" alt="Code Soul" className="h-9 sm:h-10 w-auto object-contain flex-shrink-0" />
+          <img src="/theta-logo.png" alt="THETA" className="h-9 sm:h-10 w-auto flex-shrink-0" />
           <div className="h-5 w-px bg-gradient-to-b from-transparent via-slate-200 to-transparent hidden sm:block" />
           <span className="text-xs font-medium text-slate-400 hidden sm:block truncate tracking-wide">智能分析平台</span>
         </div>
@@ -229,7 +229,7 @@ export function AppShell({
           <>
             <div
               role="separator"
-              aria-label="调整 AI 助手宽度"
+              aria-label="调整猫咪科学家宽度"
               onMouseDown={handleResizeStart}
               className={`flex-shrink-0 w-1.5 flex flex-col items-center justify-center bg-slate-200/80 hover:bg-blue-200/80 cursor-col-resize transition-colors select-none ${isResizing ? "bg-blue-300" : ""}`}
               style={{ minWidth: 6 }}
@@ -255,7 +255,7 @@ export function AppShell({
             type="button"
             onClick={() => setShowAiSidebar(true)}
             className="flex-shrink-0 w-10 flex flex-col items-center justify-center gap-1.5 py-4 bg-slate-100 hover:bg-blue-50 border-l border-slate-200 text-slate-500 hover:text-blue-600 transition-colors"
-            title="展开 AI 助手"
+            title="展开猫咪科学家"
           >
             <Sparkles className="h-5 w-5" />
             <span className="text-[10px] font-medium">AI</span>
