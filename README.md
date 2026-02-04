@@ -207,7 +207,7 @@ print(f"HDP actual topics: {hdp_result['actual_num_topics']}")
 │   ├── utils/                    # LLM and vision utilities
 │   └── docs/                     # API documentation
 ├── scripts/                      # Shell scripts for automation
-├── embedding/                     # Qwen嵌入生成代码
+├── embedding/                     # Qwen Embedding
 │   ├── main.py                    # Embedding generation main codebase
 │   ├── embedder.py                # Embedding
 │   ├── trainer.py                 # Training (supervised/unsupervised)
