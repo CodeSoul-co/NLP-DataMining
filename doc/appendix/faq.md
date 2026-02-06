@@ -131,11 +131,11 @@ A: Yes. GPU required for preprocessing and training.
 
 ## Contact
 
-- Website: https://theta.code-soul.com
-- GitHub: https://github.com/CodeSoul-co/THETA
+- Website: [https://theta.code-soul.com](https://theta.code-soul.com)
+- GitHub: [https://github.com/CodeSoul-co/THETA](https://github.com/CodeSoul-co/THETA)
 - Email: support@theta.code-soul.com
 
 ---
 
 **Document Version**: 1.0.0  
-**Last Updated**: February 4, 2026
+**Last Updated**: February 6, 2026

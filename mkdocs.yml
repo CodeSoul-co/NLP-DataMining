@@ -1,0 +1,130 @@
+# Site Information
+site_name: THETA Topic Model
+site_url: https://theta.code-soul.com
+site_description: Advanced Topic Modeling with Qwen Embeddings
+site_author: CodeSoul
+docs_dir: doc
+
+# Repository
+repo_name: CodeSoul-co/THETA
+repo_url: https://github.com/CodeSoul-co/THETA
+edit_uri: edit/main/doc/
+
+# Copyright
+copyright: Copyright &copy; 2024-2026 CodeSoul
+
+# Theme
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+
+  icon:
+    repo: fontawesome/brands/github
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+# Plugins
+plugins:
+  - search:
+      lang:
+        - en
+        - zh
+
+# Markdown Extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+# Navigation
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Overview: getting-started/overview.md
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - User Guide:
+      - Data Preparation: user-guide/data-preparation.md
+      - Preprocessing: user-guide/preprocessing.md
+      - Training Models: user-guide/training.md
+      - Evaluation: user-guide/evaluation.md
+      - Visualization: user-guide/visualization.md
+  - Models:
+      - THETA Model: models/theta.md
+      - Baseline Models: models/baselines.md
+      - Model Comparison: models/comparison.md
+  - Advanced:
+      - Custom Datasets: advanced/custom-datasets.md
+      - Hyperparameter Tuning: advanced/hyperparameters.md
+      - Chinese Data Processing: advanced/chinese-data.md
+      - Distributed Training: advanced/distributed-training.md
+  - API Reference:
+      - prepare_data.py: api/prepare-data.md
+      - run_pipeline.py: api/run-pipeline.md
+      - Visualization: api/visualization.md
+  - Examples:
+      - English Dataset: examples/english-dataset.md
+      - Chinese Dataset: examples/chinese-dataset.md
+      - Supervised Learning: examples/supervised-learning.md
+  - Troubleshooting: troubleshooting.md
+  - Appendix: appendix/faq.md
+
+# Extra
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/CodeSoul-co/THETA
