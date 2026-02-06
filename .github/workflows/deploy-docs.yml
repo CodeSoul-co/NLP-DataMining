@@ -1,0 +1,39 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'doc/**'
+      - 'mkdocs.yml'
+      - 'docs-requirements.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('docs-requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r docs-requirements.txt
+
+      - name: Deploy to GitHub Pages
+        run: mkdocs gh-deploy --force
