@@ -1,14 +1,15 @@
 """
-Engine B: Embedding Training Module
+Engine B: Embedding Training Module v2
 
-Implements:
-1. Unsupervised training - SimCSE contrastive learning
-2. Supervised training - Label-guided contrastive learning with LoRA
+Redesigned training methods:
+1. Supervised training: Encoder + MLP classification head + Cross-Entropy loss
+2. Unsupervised training: Autoregressive language modeling + Cross-Entropy loss
 
-Training stages (from method):
-- Stage 1: Zero-shot (already implemented in embedder.py)
-- Stage 2: Unsupervised fine-tuning (SimCSE)
-- Stage 3: Supervised fine-tuning (with labels)
+Key changes from v1:
+- Supervised: Uses MLP classifier instead of contrastive loss
+- Unsupervised: Uses causal LM loss instead of SimCSE
+- More epochs (default 10-20)
+- Proper deep learning training paradigm
 """
 
 import os
@@ -20,8 +21,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
-from transformers import AutoModel, AutoTokenizer
+from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass, asdict
@@ -41,23 +42,26 @@ class TrainingConfig:
     # Model
     model_path: str = "/root/autodl-tmp/qwen3_embedding_0.6B"
     max_length: int = 512
+    hidden_dim: int = 1024  # Embedding dimension
     
     # Training
-    epochs: int = 3
-    batch_size: int = 8  # Reduced from 16 to prevent OOM
-    gradient_accumulation_steps: int = 2  # Effective batch size = 16
+    epochs: int = 10  # Increased from 3
+    batch_size: int = 8
+    gradient_accumulation_steps: int = 2
     learning_rate: float = 2e-5
+    classifier_lr: float = 1e-3  # Higher LR for classifier head
     weight_decay: float = 0.01
     warmup_ratio: float = 0.1
     
-    # LoRA (for supervised/unsupervised fine-tuning)
+    # LoRA
     use_lora: bool = True
     lora_r: int = 8
     lora_alpha: int = 16
     lora_dropout: float = 0.1
     
-    # Contrastive learning
-    temperature: float = 0.05
+    # Classifier head
+    classifier_hidden_dim: int = 256
+    classifier_dropout: float = 0.3
     
     # Output
     output_dir: str = "/root/autodl-tmp/embedding/outputs"
@@ -65,14 +69,14 @@ class TrainingConfig:
     result_dir: str = "/root/autodl-tmp/result"
 
 
-class ContrastiveDataset(Dataset):
-    """Dataset for contrastive learning"""
+class ClassificationDataset(Dataset):
+    """Dataset for classification training"""
     
     def __init__(
         self,
         texts: List[str],
-        labels: Optional[np.ndarray] = None,
-        tokenizer=None,
+        labels: np.ndarray,
+        tokenizer,
         max_length: int = 512
     ):
         self.texts = texts
@@ -86,7 +90,6 @@ class ContrastiveDataset(Dataset):
     def __getitem__(self, idx):
         text = self.texts[idx]
         
-        # Tokenize
         encoding = self.tokenizer(
             text,
             max_length=self.max_length,
@@ -95,141 +98,87 @@ class ContrastiveDataset(Dataset):
             return_tensors='pt'
         )
         
-        item = {
+        return {
             'input_ids': encoding['input_ids'].squeeze(0),
             'attention_mask': encoding['attention_mask'].squeeze(0),
-            'idx': idx
+            'label': torch.tensor(self.labels[idx], dtype=torch.long)
         }
-        
-        if self.labels is not None:
-            item['label'] = torch.tensor(self.labels[idx])
-        
-        return item
 
 
-class SimCSELoss(nn.Module):
-    """
-    SimCSE contrastive loss for unsupervised learning.
+class AutoregressiveDataset(Dataset):
+    """Dataset for autoregressive language modeling"""
     
-    Uses dropout as data augmentation - same text with different dropout
-    produces positive pairs.
-    """
-    
-    def __init__(self, temperature: float = 0.05):
-        super().__init__()
-        self.temperature = temperature
-    
-    def forward(
+    def __init__(
         self,
-        embeddings1: torch.Tensor,
-        embeddings2: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Compute SimCSE loss.
+        texts: List[str],
+        tokenizer,
+        max_length: int = 512
+    ):
+        self.texts = texts
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+    
+    def __len__(self):
+        return len(self.texts)
+    
+    def __getitem__(self, idx):
+        text = self.texts[idx]
         
-        Args:
-            embeddings1: First view embeddings (batch, dim)
-            embeddings2: Second view embeddings (batch, dim)
-            
-        Returns:
-            Contrastive loss
-        """
-        # Normalize embeddings
-        embeddings1 = F.normalize(embeddings1, p=2, dim=1)
-        embeddings2 = F.normalize(embeddings2, p=2, dim=1)
+        encoding = self.tokenizer(
+            text,
+            max_length=self.max_length,
+            padding='max_length',
+            truncation=True,
+            return_tensors='pt'
+        )
         
-        # Compute similarity matrix
-        batch_size = embeddings1.size(0)
+        input_ids = encoding['input_ids'].squeeze(0)
+        attention_mask = encoding['attention_mask'].squeeze(0)
         
-        # Concatenate embeddings
-        embeddings = torch.cat([embeddings1, embeddings2], dim=0)  # (2*batch, dim)
+        # For autoregressive: labels are shifted input_ids
+        # -100 is ignore index for cross entropy
+        labels = input_ids.clone()
+        labels[attention_mask == 0] = -100  # Ignore padding
         
-        # Compute all pairwise similarities
-        sim_matrix = torch.mm(embeddings, embeddings.t()) / self.temperature
-        
-        # Create labels: positive pairs are (i, i+batch_size) and (i+batch_size, i)
-        labels = torch.arange(batch_size, device=embeddings.device)
-        labels = torch.cat([labels + batch_size, labels], dim=0)
-        
-        # Mask out self-similarities
-        mask = torch.eye(2 * batch_size, device=embeddings.device).bool()
-        sim_matrix = sim_matrix.masked_fill(mask, -1e9)
-        
-        # Cross entropy loss
-        loss = F.cross_entropy(sim_matrix, labels)
-        
-        return loss
+        return {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'labels': labels
+        }
 
 
-class SupervisedContrastiveLoss(nn.Module):
-    """
-    Supervised contrastive loss using labels.
+class MLPClassifier(nn.Module):
+    """MLP classification head for supervised training"""
     
-    Pulls together samples with same label, pushes apart different labels.
-    """
-    
-    def __init__(self, temperature: float = 0.05):
-        super().__init__()
-        self.temperature = temperature
-    
-    def forward(
+    def __init__(
         self,
-        embeddings: torch.Tensor,
-        labels: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Compute supervised contrastive loss.
-        
-        Args:
-            embeddings: Embeddings (batch, dim)
-            labels: Labels (batch,)
-            
-        Returns:
-            Contrastive loss
-        """
-        # Normalize embeddings
-        embeddings = F.normalize(embeddings, p=2, dim=1)
-        
-        batch_size = embeddings.size(0)
-        
-        # Compute similarity matrix
-        sim_matrix = torch.mm(embeddings, embeddings.t()) / self.temperature
-        
-        # Create mask for positive pairs (same label)
-        labels = labels.view(-1, 1)
-        mask_positive = (labels == labels.t()).float()
-        
-        # Remove self-similarities from positives
-        mask_self = torch.eye(batch_size, device=embeddings.device)
-        mask_positive = mask_positive - mask_self
-        
-        # For numerical stability
-        logits_max, _ = torch.max(sim_matrix, dim=1, keepdim=True)
-        logits = sim_matrix - logits_max.detach()
-        
-        # Compute log_prob
-        exp_logits = torch.exp(logits) * (1 - mask_self)
-        log_prob = logits - torch.log(exp_logits.sum(dim=1, keepdim=True) + 1e-10)
-        
-        # Compute mean of log-likelihood over positive pairs
-        num_positives = mask_positive.sum(dim=1)
-        num_positives = torch.clamp(num_positives, min=1)
-        
-        mean_log_prob_pos = (mask_positive * log_prob).sum(dim=1) / num_positives
-        
-        # Loss
-        loss = -mean_log_prob_pos.mean()
-        
-        return loss
-
-
-class EmbeddingTrainer:
-    """
-    Trainer for embedding fine-tuning.
+        input_dim: int,
+        hidden_dim: int,
+        num_classes: int,
+        dropout: float = 0.3
+    ):
+        super().__init__()
+        self.classifier = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, num_classes)
+        )
     
-    Supports:
-    - Unsupervised: SimCSE contrastive learning
-    - Supervised: Label-guided contrastive learning
+    def forward(self, x):
+        return self.classifier(x)
+
+
+class EmbeddingTrainerV2:
+    """
+    Trainer for embedding fine-tuning (v2).
+    
+    Training methods:
+    - Supervised: Encoder + MLP classifier + Cross-Entropy loss
+    - Unsupervised: Autoregressive LM + Cross-Entropy loss
     """
     
     def __init__(
@@ -251,20 +200,22 @@ class EmbeddingTrainer:
         os.makedirs(self.config.checkpoint_dir, exist_ok=True)
         os.makedirs(self.config.result_dir, exist_ok=True)
         
-        # Load model and tokenizer
-        self._load_model()
+        # Model will be loaded based on training mode
+        self.model = None
+        self.tokenizer = None
+        self.classifier = None
         
         # Timestamp for this run
         self.run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         if self.dev_mode:
-            print(f"[DEV] EmbeddingTrainer initialized")
+            print(f"[DEV] EmbeddingTrainerV2 initialized")
             print(f"[DEV]   device={self.device}")
-            print(f"[DEV]   use_lora={self.config.use_lora}")
+            print(f"[DEV]   epochs={self.config.epochs}")
     
-    def _load_model(self):
-        """Load model and tokenizer"""
-        print(f"Loading model from {self.config.model_path}")
+    def _load_encoder_model(self):
+        """Load encoder model for supervised training"""
+        print(f"Loading encoder model from {self.config.model_path}")
         
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.config.model_path,
@@ -273,7 +224,8 @@ class EmbeddingTrainer:
         
         self.model = AutoModel.from_pretrained(
             self.config.model_path,
-            trust_remote_code=True
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16
         )
         
         # Apply LoRA if enabled
@@ -291,35 +243,53 @@ class EmbeddingTrainer:
             self.model.print_trainable_parameters()
         
         self.model.to(self.device)
+        
+        # Get actual embedding dimension from model config
+        self.embedding_dim = self.model.config.hidden_size
+        print(f"Embedding dimension: {self.embedding_dim}")
     
-    def load_checkpoint(self, checkpoint_path: str):
-        """Load model from checkpoint"""
-        print(f"Loading checkpoint from {checkpoint_path}")
+    def _load_causal_lm_model(self):
+        """Load causal LM model for unsupervised training"""
+        print(f"Loading causal LM model from {self.config.model_path}")
         
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            self.config.model_path,
+            trust_remote_code=True
+        )
+        
+        # Ensure pad token
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        # Load as causal LM for autoregressive training
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.config.model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.bfloat16
+        )
+        
+        # Apply LoRA if enabled
         if self.config.use_lora and PEFT_AVAILABLE:
-            # Load LoRA weights
-            from peft import PeftModel
-            # First load base model
-            base_model = AutoModel.from_pretrained(
-                self.config.model_path,
-                trust_remote_code=True
+            print("Applying LoRA adapter...")
+            lora_config = LoraConfig(
+                r=self.config.lora_r,
+                lora_alpha=self.config.lora_alpha,
+                lora_dropout=self.config.lora_dropout,
+                target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+                bias="none",
+                task_type=TaskType.CAUSAL_LM
             )
-            # Then load LoRA adapter
-            self.model = PeftModel.from_pretrained(base_model, checkpoint_path)
-            self.model.to(self.device)
-        else:
-            # Load full model state dict
-            state_dict = torch.load(checkpoint_path, map_location=self.device)
-            self.model.load_state_dict(state_dict)
+            self.model = get_peft_model(self.model, lora_config)
+            self.model.print_trainable_parameters()
         
-        print("Checkpoint loaded successfully")
+        self.model.to(self.device)
     
     def _get_embeddings(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor
     ) -> torch.Tensor:
-        """Get embeddings from model"""
+        """Get embeddings from encoder model using mean pooling"""
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -335,119 +305,6 @@ class EmbeddingTrainer:
         
         return embeddings
     
-    def train_unsupervised(
-        self,
-        texts: List[str],
-        dataset_name: str
-    ) -> Dict:
-        """
-        Train with unsupervised SimCSE.
-        
-        Args:
-            texts: List of texts
-            dataset_name: Name of dataset
-            
-        Returns:
-            Training results
-        """
-        print(f"\n{'='*70}")
-        print(f"Unsupervised Training (SimCSE) - {dataset_name}")
-        print(f"{'='*70}")
-        print(f"Samples: {len(texts)}")
-        print(f"Epochs: {self.config.epochs}")
-        print(f"Batch size: {self.config.batch_size}")
-        
-        # Create dataset
-        dataset = ContrastiveDataset(
-            texts=texts,
-            tokenizer=self.tokenizer,
-            max_length=self.config.max_length
-        )
-        
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.config.batch_size,
-            shuffle=True,
-            num_workers=0,
-            pin_memory=True
-        )
-        
-        # Loss function
-        criterion = SimCSELoss(temperature=self.config.temperature)
-        
-        # Optimizer
-        optimizer = AdamW(
-            self.model.parameters(),
-            lr=self.config.learning_rate,
-            weight_decay=self.config.weight_decay
-        )
-        
-        # Scheduler
-        total_steps = len(dataloader) * self.config.epochs
-        scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
-        
-        # Training loop
-        self.model.train()
-        history = []
-        accum_steps = getattr(self.config, 'gradient_accumulation_steps', 1)
-        
-        for epoch in range(self.config.epochs):
-            epoch_loss = 0.0
-            epoch_start = time.time()
-            
-            progress = tqdm(dataloader, desc=f"Epoch {epoch+1}/{self.config.epochs}")
-            optimizer.zero_grad()
-            
-            for batch_idx, batch in enumerate(progress):
-                input_ids = batch['input_ids'].to(self.device)
-                attention_mask = batch['attention_mask'].to(self.device)
-                
-                # Forward pass twice with different dropout (SimCSE)
-                embeddings1 = self._get_embeddings(input_ids, attention_mask)
-                embeddings2 = self._get_embeddings(input_ids, attention_mask)
-                
-                # Compute loss with gradient accumulation
-                loss = criterion(embeddings1, embeddings2) / accum_steps
-                loss.backward()
-                
-                if (batch_idx + 1) % accum_steps == 0:
-                    optimizer.step()
-                    scheduler.step()
-                    optimizer.zero_grad()
-                
-                epoch_loss += loss.item() * accum_steps
-                progress.set_postfix({'loss': loss.item() * accum_steps})
-                
-                # Clear GPU cache periodically
-                if batch_idx % 50 == 0:
-                    torch.cuda.empty_cache()
-            
-            epoch_time = time.time() - epoch_start
-            avg_loss = epoch_loss / len(dataloader)
-            
-            print(f"Epoch {epoch+1}/{self.config.epochs} | "
-                  f"Time: {epoch_time:.1f}s | "
-                  f"Loss: {avg_loss:.4f} | "
-                  f"LR: {scheduler.get_last_lr()[0]:.6f}")
-            
-            history.append({
-                'epoch': epoch + 1,
-                'loss': avg_loss,
-                'time': epoch_time,
-                'lr': scheduler.get_last_lr()[0]
-            })
-        
-        # Save checkpoint
-        self._save_checkpoint(dataset_name, "unsupervised")
-        
-        # Save history
-        self._save_history(history, dataset_name, "unsupervised")
-        
-        return {
-            'history': history,
-            'final_loss': history[-1]['loss']
-        }
-    
     def train_supervised(
         self,
         texts: List[str],
@@ -455,26 +312,43 @@ class EmbeddingTrainer:
         dataset_name: str
     ) -> Dict:
         """
-        Train with supervised contrastive learning.
+        Supervised training with MLP classifier + Cross-Entropy loss.
+        
+        Architecture:
+            text -> Encoder -> embedding -> MLP -> logits -> CE loss
         
         Args:
             texts: List of texts
-            labels: Label array
+            labels: Label array (numeric)
             dataset_name: Name of dataset
             
         Returns:
             Training results
         """
         print(f"\n{'='*70}")
-        print(f"Supervised Training (Contrastive) - {dataset_name}")
+        print(f"Supervised Training (MLP + Cross-Entropy) - {dataset_name}")
         print(f"{'='*70}")
+        
+        # Load encoder model
+        self._load_encoder_model()
+        
+        # Get number of classes
+        num_classes = len(np.unique(labels))
         print(f"Samples: {len(texts)}")
-        print(f"Unique labels: {len(np.unique(labels))}")
+        print(f"Classes: {num_classes}")
         print(f"Epochs: {self.config.epochs}")
         print(f"Batch size: {self.config.batch_size}")
         
-        # Create dataset
-        dataset = ContrastiveDataset(
+        # Initialize classifier head (use actual embedding dim from model)
+        self.classifier = MLPClassifier(
+            input_dim=self.embedding_dim,
+            hidden_dim=self.config.classifier_hidden_dim,
+            num_classes=num_classes,
+            dropout=self.config.classifier_dropout
+        ).to(self.device)
+        
+        # Create dataset and dataloader
+        dataset = ClassificationDataset(
             texts=texts,
             labels=labels,
             tokenizer=self.tokenizer,
@@ -490,26 +364,33 @@ class EmbeddingTrainer:
         )
         
         # Loss function
-        criterion = SupervisedContrastiveLoss(temperature=self.config.temperature)
+        criterion = nn.CrossEntropyLoss()
         
-        # Optimizer
-        optimizer = AdamW(
-            self.model.parameters(),
-            lr=self.config.learning_rate,
-            weight_decay=self.config.weight_decay
-        )
+        # Optimizer with different LR for encoder and classifier
+        optimizer = AdamW([
+            {'params': self.model.parameters(), 'lr': self.config.learning_rate},
+            {'params': self.classifier.parameters(), 'lr': self.config.classifier_lr}
+        ], weight_decay=self.config.weight_decay)
         
         # Scheduler
         total_steps = len(dataloader) * self.config.epochs
-        scheduler = CosineAnnealingLR(optimizer, T_max=total_steps)
+        scheduler = OneCycleLR(
+            optimizer,
+            max_lr=[self.config.learning_rate, self.config.classifier_lr],
+            total_steps=total_steps,
+            pct_start=self.config.warmup_ratio
+        )
         
         # Training loop
         self.model.train()
+        self.classifier.train()
         history = []
-        accum_steps = getattr(self.config, 'gradient_accumulation_steps', 1)
+        accum_steps = self.config.gradient_accumulation_steps
         
         for epoch in range(self.config.epochs):
             epoch_loss = 0.0
+            epoch_correct = 0
+            epoch_total = 0
             epoch_start = time.time()
             
             progress = tqdm(dataloader, desc=f"Epoch {epoch+1}/{self.config.epochs}")
@@ -521,37 +402,47 @@ class EmbeddingTrainer:
                 batch_labels = batch['label'].to(self.device)
                 
                 # Forward pass
-                embeddings = self._get_embeddings(input_ids, attention_mask)
+                with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                    embeddings = self._get_embeddings(input_ids, attention_mask)
+                    logits = self.classifier(embeddings.float())
+                    loss = criterion(logits, batch_labels) / accum_steps
                 
-                # Compute loss with gradient accumulation
-                loss = criterion(embeddings, batch_labels) / accum_steps
                 loss.backward()
                 
                 if (batch_idx + 1) % accum_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    torch.nn.utils.clip_grad_norm_(self.classifier.parameters(), 1.0)
                     optimizer.step()
                     scheduler.step()
                     optimizer.zero_grad()
                 
+                # Track metrics
                 epoch_loss += loss.item() * accum_steps
-                progress.set_postfix({'loss': loss.item() * accum_steps})
+                preds = logits.argmax(dim=-1)
+                epoch_correct += (preds == batch_labels).sum().item()
+                epoch_total += batch_labels.size(0)
+                
+                acc = epoch_correct / epoch_total
+                progress.set_postfix({'loss': loss.item() * accum_steps, 'acc': f'{acc:.3f}'})
                 
                 # Clear GPU cache periodically
-                if batch_idx % 50 == 0:
+                if batch_idx % 100 == 0:
                     torch.cuda.empty_cache()
             
             epoch_time = time.time() - epoch_start
             avg_loss = epoch_loss / len(dataloader)
+            accuracy = epoch_correct / epoch_total
             
             print(f"Epoch {epoch+1}/{self.config.epochs} | "
                   f"Time: {epoch_time:.1f}s | "
                   f"Loss: {avg_loss:.4f} | "
-                  f"LR: {scheduler.get_last_lr()[0]:.6f}")
+                  f"Accuracy: {accuracy:.4f}")
             
             history.append({
                 'epoch': epoch + 1,
                 'loss': avg_loss,
-                'time': epoch_time,
-                'lr': scheduler.get_last_lr()[0]
+                'accuracy': accuracy,
+                'time': epoch_time
             })
         
         # Save checkpoint
@@ -562,7 +453,136 @@ class EmbeddingTrainer:
         
         return {
             'history': history,
-            'final_loss': history[-1]['loss']
+            'final_loss': history[-1]['loss'],
+            'final_accuracy': history[-1]['accuracy']
+        }
+    
+    def train_unsupervised(
+        self,
+        texts: List[str],
+        dataset_name: str
+    ) -> Dict:
+        """
+        Unsupervised training with autoregressive language modeling.
+        
+        Uses Cross-Entropy loss on next token prediction.
+        
+        Args:
+            texts: List of texts
+            dataset_name: Name of dataset
+            
+        Returns:
+            Training results
+        """
+        print(f"\n{'='*70}")
+        print(f"Unsupervised Training (Autoregressive LM) - {dataset_name}")
+        print(f"{'='*70}")
+        
+        # Load causal LM model
+        self._load_causal_lm_model()
+        
+        print(f"Samples: {len(texts)}")
+        print(f"Epochs: {self.config.epochs}")
+        print(f"Batch size: {self.config.batch_size}")
+        
+        # Create dataset
+        dataset = AutoregressiveDataset(
+            texts=texts,
+            tokenizer=self.tokenizer,
+            max_length=self.config.max_length
+        )
+        
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            num_workers=0,
+            pin_memory=True
+        )
+        
+        # Optimizer
+        optimizer = AdamW(
+            self.model.parameters(),
+            lr=self.config.learning_rate,
+            weight_decay=self.config.weight_decay
+        )
+        
+        # Scheduler
+        total_steps = len(dataloader) * self.config.epochs
+        scheduler = OneCycleLR(
+            optimizer,
+            max_lr=self.config.learning_rate,
+            total_steps=total_steps,
+            pct_start=self.config.warmup_ratio
+        )
+        
+        # Training loop
+        self.model.train()
+        history = []
+        accum_steps = self.config.gradient_accumulation_steps
+        
+        for epoch in range(self.config.epochs):
+            epoch_loss = 0.0
+            epoch_start = time.time()
+            
+            progress = tqdm(dataloader, desc=f"Epoch {epoch+1}/{self.config.epochs}")
+            optimizer.zero_grad()
+            
+            for batch_idx, batch in enumerate(progress):
+                input_ids = batch['input_ids'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
+                labels = batch['labels'].to(self.device)
+                
+                # Forward pass with causal LM
+                with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                    outputs = self.model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        labels=labels
+                    )
+                    loss = outputs.loss / accum_steps
+                
+                loss.backward()
+                
+                if (batch_idx + 1) % accum_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
+                
+                epoch_loss += loss.item() * accum_steps
+                progress.set_postfix({'loss': loss.item() * accum_steps})
+                
+                # Clear GPU cache periodically
+                if batch_idx % 100 == 0:
+                    torch.cuda.empty_cache()
+            
+            epoch_time = time.time() - epoch_start
+            avg_loss = epoch_loss / len(dataloader)
+            perplexity = np.exp(avg_loss) if avg_loss < 100 else float('inf')
+            
+            print(f"Epoch {epoch+1}/{self.config.epochs} | "
+                  f"Time: {epoch_time:.1f}s | "
+                  f"Loss: {avg_loss:.4f} | "
+                  f"Perplexity: {perplexity:.2f}")
+            
+            history.append({
+                'epoch': epoch + 1,
+                'loss': avg_loss,
+                'perplexity': perplexity,
+                'time': epoch_time
+            })
+        
+        # Save checkpoint
+        self._save_checkpoint(dataset_name, "unsupervised")
+        
+        # Save history
+        self._save_history(history, dataset_name, "unsupervised")
+        
+        return {
+            'history': history,
+            'final_loss': history[-1]['loss'],
+            'final_perplexity': history[-1]['perplexity']
         }
     
     def generate_embeddings(
@@ -572,7 +592,7 @@ class EmbeddingTrainer:
         show_progress: bool = True
     ) -> np.ndarray:
         """
-        Generate embeddings using the trained model.
+        Generate embeddings using the trained encoder model.
         
         Args:
             texts: List of texts
@@ -582,8 +602,10 @@ class EmbeddingTrainer:
         Returns:
             Embeddings array (N, D)
         """
-        self.model.eval()
+        if self.model is None:
+            self._load_encoder_model()
         
+        self.model.eval()
         all_embeddings = []
         
         iterator = range(0, len(texts), batch_size)
@@ -591,10 +613,9 @@ class EmbeddingTrainer:
             iterator = tqdm(iterator, desc="Generating embeddings")
         
         with torch.no_grad():
-            for batch_idx, i in enumerate(iterator):
+            for i in iterator:
                 batch_texts = texts[i:i + batch_size]
                 
-                # Tokenize
                 encoding = self.tokenizer(
                     batch_texts,
                     max_length=self.config.max_length,
@@ -606,23 +627,18 @@ class EmbeddingTrainer:
                 input_ids = encoding['input_ids'].to(self.device)
                 attention_mask = encoding['attention_mask'].to(self.device)
                 
-                # Get embeddings
-                embeddings = self._get_embeddings(input_ids, attention_mask)
+                with torch.cuda.amp.autocast(dtype=torch.bfloat16):
+                    embeddings = self._get_embeddings(input_ids, attention_mask)
                 
-                # Normalize
-                embeddings = F.normalize(embeddings, p=2, dim=1)
+                all_embeddings.append(embeddings.float().cpu().numpy())
                 
-                all_embeddings.append(embeddings.cpu().numpy())
-                
-                # Clear GPU cache periodically
-                if batch_idx % 20 == 0:
+                if i % (batch_size * 50) == 0:
                     torch.cuda.empty_cache()
         
         return np.vstack(all_embeddings)
     
     def _save_checkpoint(self, dataset_name: str, mode: str):
-        """Save model checkpoint to dataset-specific directory"""
-        # Create dataset-specific checkpoint directory
+        """Save model checkpoint"""
         dataset_ckpt_dir = os.path.join(self.config.checkpoint_dir, dataset_name)
         os.makedirs(dataset_ckpt_dir, exist_ok=True)
         
@@ -632,17 +648,23 @@ class EmbeddingTrainer:
         )
         
         if self.config.use_lora and PEFT_AVAILABLE:
-            # Save only LoRA weights
             self.model.save_pretrained(checkpoint_path)
         else:
-            # Save full model
             torch.save(self.model.state_dict(), f"{checkpoint_path}.pt")
+        
+        # Save classifier if exists
+        if self.classifier is not None:
+            classifier_path = os.path.join(
+                dataset_ckpt_dir,
+                f"classifier_{mode}_{self.run_timestamp}.pt"
+            )
+            torch.save(self.classifier.state_dict(), classifier_path)
+            print(f"Saved classifier: {classifier_path}")
         
         print(f"Saved checkpoint: {checkpoint_path}")
     
     def _save_history(self, history: List[Dict], dataset_name: str, mode: str):
-        """Save training history to dataset-specific directory"""
-        # Create dataset-specific result directory
+        """Save training history"""
         dataset_result_dir = os.path.join(self.config.result_dir, dataset_name, "embedding")
         os.makedirs(dataset_result_dir, exist_ok=True)
         
@@ -663,25 +685,13 @@ class EmbeddingTrainer:
         mode: str,
         labels: Optional[np.ndarray] = None
     ) -> Dict[str, str]:
-        """
-        Save embeddings to files.
-        
-        Args:
-            embeddings: Embedding matrix
-            dataset_name: Dataset name
-            mode: Training mode
-            labels: Optional labels
-            
-        Returns:
-            Dictionary with file paths
-        """
-        # Create mode-specific directory under dataset folder
+        """Save embeddings to files"""
         mode_dir = os.path.join(self.config.output_dir, mode)
         os.makedirs(mode_dir, exist_ok=True)
         
         base_name = f"{dataset_name}_{mode}"
         
-        # Save embeddings to output dir
+        # Save embeddings
         emb_path = os.path.join(mode_dir, f"{base_name}_embeddings.npy")
         np.save(emb_path, embeddings)
         
@@ -705,7 +715,7 @@ class EmbeddingTrainer:
         with open(meta_path, 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        # Save to result directory with dataset-specific folder
+        # Also save to result directory
         dataset_result_dir = os.path.join(self.config.result_dir, dataset_name, "embedding")
         os.makedirs(dataset_result_dir, exist_ok=True)
         
@@ -715,7 +725,6 @@ class EmbeddingTrainer:
         )
         np.save(result_emb_path, embeddings)
         
-        # Save labels to result dir too
         if labels is not None:
             result_label_path = os.path.join(
                 dataset_result_dir,
@@ -723,7 +732,6 @@ class EmbeddingTrainer:
             )
             np.save(result_label_path, labels)
         
-        # Save metadata to result dir
         result_meta_path = os.path.join(
             dataset_result_dir,
             f"{mode}_metadata_{self.run_timestamp}.json"
