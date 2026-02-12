@@ -445,6 +445,8 @@ class EmbeddingManager:
         self,
         output_dir: str = "/root/autodl-tmp/embedding/outputs",
         result_dir: str = "/root/autodl-tmp/result",
+        model_size: str = "0.6B",
+        exp_dir: str = "",
         dev_mode: bool = False
     ):
         """
@@ -453,10 +455,14 @@ class EmbeddingManager:
         Args:
             output_dir: Directory for intermediate outputs
             result_dir: Directory for final results (with versioning)
+            model_size: Qwen model size (0.6B, 4B, 8B) for result directory structure
+            exp_dir: If set, save embeddings to {exp_dir}/embeddings/ (exp management)
             dev_mode: Print debug information
         """
         self.output_dir = output_dir
         self.result_dir = result_dir
+        self.model_size = model_size
+        self.exp_dir = exp_dir
         self.dev_mode = dev_mode
         
         # Create directories
@@ -516,28 +522,56 @@ class EmbeddingManager:
         with open(meta_path, 'w') as f:
             json.dump(output.to_dict(), f, indent=2)
         
-        # Save to result directory with dataset-specific folder
-        dataset_result_dir = os.path.join(self.result_dir, output.dataset_name, "embedding")
+        # Save to result directory with THETA-compatible structure:
+        # If exp_dir is set, save to {exp_dir}/embeddings/
+        # Otherwise fallback: /result/{model_size}/{dataset}/{mode}/embeddings/
+        if self.exp_dir:
+            dataset_result_dir = os.path.join(self.exp_dir, "embeddings")
+        else:
+            dataset_result_dir = os.path.join(
+                self.result_dir, 
+                self.model_size,           # e.g., 0.6B, 4B, 8B
+                output.dataset_name, 
+                output.mode,               # e.g., zero_shot, supervised, unsupervised
+                "embeddings"
+            )
         os.makedirs(dataset_result_dir, exist_ok=True)
         
+        # THETA expects: {dataset}_{mode}_embeddings.npy (no timestamp)
         result_emb_path = os.path.join(
             dataset_result_dir,
-            f"{output.mode}_embeddings_{output.timestamp}.npy"
+            f"{output.dataset_name}_{output.mode}_embeddings.npy"
         )
         np.save(result_emb_path, output.embeddings)
         
+        # Also save as embeddings.npy for compatibility
+        simple_emb_path = os.path.join(dataset_result_dir, "embeddings.npy")
+        np.save(simple_emb_path, output.embeddings)
+        
         result_meta_path = os.path.join(
             dataset_result_dir,
-            f"{output.mode}_metadata_{output.timestamp}.json"
+            f"{output.dataset_name}_{output.mode}_metadata.json"
         )
         with open(result_meta_path, 'w') as f:
             json.dump(output.to_dict(), f, indent=2)
         
+        # Save simple metadata.json
+        simple_meta = {
+            'num_documents': output.embeddings.shape[0],
+            'embedding_dim': output.embeddings.shape[1],
+            'model_size': self.model_size,
+            'mode': output.mode,
+        }
+        simple_meta_path = os.path.join(dataset_result_dir, "metadata.json")
+        with open(simple_meta_path, 'w') as f:
+            json.dump(simple_meta, f, indent=2)
+        
         # Save labels to result dir too
+        result_label_path = None
         if output.labels is not None:
             result_label_path = os.path.join(
                 dataset_result_dir,
-                f"{output.mode}_labels_{output.timestamp}.npy"
+                f"{output.dataset_name}_{output.mode}_labels.npy"
             )
             np.save(result_label_path, output.labels)
         
@@ -546,6 +580,7 @@ class EmbeddingManager:
             "labels": label_path,
             "metadata": meta_path,
             "result_embeddings": result_emb_path,
+            "result_labels": result_label_path,
             "result_metadata": result_meta_path
         }
         
@@ -555,7 +590,7 @@ class EmbeddingManager:
                 if path:
                     print(f"[DEV]   {key}: {path}")
         
-        print(f"Saved to result: {dataset_result_dir}")
+        print(f"Saved to result (THETA-compatible): {dataset_result_dir}")
         
         return saved_paths
     
