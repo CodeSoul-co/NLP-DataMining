@@ -119,6 +119,21 @@ def parse_args():
         help="Result directory (versioned, no overwrite)"
     )
     
+    parser.add_argument(
+        "--model_size",
+        type=str,
+        default="0.6B",
+        choices=["0.6B", "4B", "8B"],
+        help="Qwen model size for result directory structure"
+    )
+    
+    parser.add_argument(
+        "--exp_dir",
+        type=str,
+        default="",
+        help="Experiment directory for saving embeddings (overrides default result path)"
+    )
+    
     # Embedding settings
     parser.add_argument(
         "--normalize",
@@ -192,6 +207,13 @@ def parse_args():
     )
     
     parser.add_argument(
+        "--label_column",
+        type=str,
+        default=None,
+        help="Override label column for supervised training (e.g. --label_column province)"
+    )
+    
+    parser.add_argument(
         "--vocab_file",
         type=str,
         default=None,
@@ -250,6 +272,8 @@ def run_zero_shot(args):
     manager = EmbeddingManager(
         output_dir=args.output_dir,
         result_dir=args.result_dir,
+        model_size=args.model_size,
+        exp_dir=args.exp_dir,
         dev_mode=args.dev
     )
     
@@ -342,7 +366,7 @@ def run_zero_shot(args):
 
 def run_supervised(args):
     """Run supervised LoRA training (for labeled datasets)"""
-    from trainer import EmbeddingTrainer, TrainingConfig
+    from trainer import EmbeddingTrainerV2 as EmbeddingTrainer, TrainingConfig
     import numpy as np
     
     print("\n[Step 1/5] Initializing data loader...")
@@ -373,7 +397,9 @@ def run_supervised(args):
         learning_rate=args.learning_rate,
         use_lora=use_lora,
         output_dir=args.output_dir,
-        result_dir=args.result_dir
+        result_dir=args.result_dir,
+        model_size=args.model_size,
+        exp_dir=args.exp_dir
     )
     
     trainer = EmbeddingTrainer(config=config, dev_mode=args.dev)
@@ -397,9 +423,68 @@ def run_supervised(args):
                 random_seed=args.seed
             )
             
+            # If no built-in labels, try --label_column override or interactive selection
             if labels is None:
-                print(f"[ERROR] {dataset_name} has no labels, skipping...")
-                continue
+                import pandas as pd
+                config_entry = loader.DATASET_CONFIGS[dataset_name]
+                full_path = os.path.join(loader.base_path, config_entry["file_path"])
+                df = pd.read_csv(full_path, encoding='utf-8')
+                text_col = config_entry["text_column"]
+                
+                # Find candidate label columns (categorical, not text, 2-500 unique values)
+                candidate_cols = []
+                for col in df.columns:
+                    if col == text_col:
+                        continue
+                    nunique = df[col].nunique()
+                    if 2 <= nunique <= 500:
+                        candidate_cols.append((col, nunique))
+                
+                label_column = getattr(args, 'label_column', None)
+                
+                if label_column and label_column != 'select':
+                    # Direct specification
+                    if label_column in df.columns:
+                        labels = df[label_column].values
+                        if args.max_samples and args.max_samples < len(labels):
+                            labels = labels[:args.max_samples]
+                        print(f"  Using --label_column '{label_column}' ({len(np.unique(labels))} classes)")
+                    else:
+                        print(f"[ERROR] Column '{label_column}' not found. Available: {df.columns.tolist()}")
+                        continue
+                elif candidate_cols:
+                    # Interactive selection or auto-select
+                    if label_column == 'select' or len(candidate_cols) > 1:
+                        print(f"\n  Available label columns for {dataset_name}:")
+                        print(f"  {'No.':<5} {'Column':<20} {'Unique Values':<15} {'Sample'}")
+                        print(f"  {'-'*60}")
+                        for idx, (col, nunique) in enumerate(candidate_cols, 1):
+                            sample = str(df[col].iloc[0])[:30]
+                            print(f"  {idx:<5} {col:<20} {nunique:<15} {sample}")
+                        print()
+                        try:
+                            choice = input(f"  Select label column [1-{len(candidate_cols)}]: ").strip()
+                            choice_idx = int(choice) - 1
+                            if 0 <= choice_idx < len(candidate_cols):
+                                chosen_col = candidate_cols[choice_idx][0]
+                            else:
+                                print(f"[ERROR] Invalid choice: {choice}")
+                                continue
+                        except (ValueError, EOFError):
+                            print(f"[ERROR] Invalid input, skipping {dataset_name}")
+                            continue
+                    else:
+                        chosen_col = candidate_cols[0][0]
+                    
+                    labels = df[chosen_col].values
+                    if args.max_samples and args.max_samples < len(labels):
+                        labels = labels[:args.max_samples]
+                    print(f"  Using label column '{chosen_col}' ({len(np.unique(labels))} classes)")
+                else:
+                    print(f"[ERROR] {dataset_name} has no suitable label columns.")
+                    print(f"  Columns: {df.columns.tolist()}")
+                    print(f"  Use --label_column <col> to specify one.")
+                    continue
             
             # Convert labels to numeric if needed
             if not np.issubdtype(labels.dtype, np.number):
@@ -451,7 +536,7 @@ def run_supervised(args):
 
 def run_unsupervised(args):
     """Run unsupervised SimCSE training (for all datasets)"""
-    from trainer import EmbeddingTrainer, TrainingConfig
+    from trainer import EmbeddingTrainerV2 as EmbeddingTrainer, TrainingConfig
     
     print("\n[Step 1/5] Initializing data loader...")
     loader = DatasetLoader(dev_mode=args.dev)
@@ -475,7 +560,9 @@ def run_unsupervised(args):
         learning_rate=args.learning_rate,
         use_lora=use_lora,
         output_dir=args.output_dir,
-        result_dir=args.result_dir
+        result_dir=args.result_dir,
+        model_size=args.model_size,
+        exp_dir=args.exp_dir
     )
     
     trainer = EmbeddingTrainer(config=config, dev_mode=args.dev)
@@ -545,7 +632,7 @@ def run_joint_unsupervised(args):
     Run joint unsupervised training on ALL datasets together.
     This trains a single shared embedding function using all datasets.
     """
-    from trainer import EmbeddingTrainer, TrainingConfig
+    from trainer import EmbeddingTrainerV2 as EmbeddingTrainer, TrainingConfig
     import numpy as np
     
     print("\n" + "=" * 70)
@@ -637,7 +724,9 @@ def run_joint_unsupervised(args):
         learning_rate=args.learning_rate,
         use_lora=use_lora,
         output_dir=args.output_dir,
-        result_dir=args.result_dir
+        result_dir=args.result_dir,
+        model_size=args.model_size,
+        exp_dir=args.exp_dir
     )
     
     trainer = EmbeddingTrainer(config=config, dev_mode=args.dev)
@@ -691,7 +780,7 @@ def run_joint_supervised(args):
     Run joint supervised training on ALL labeled datasets together.
     This trains a single shared embedding function using all labeled datasets.
     """
-    from trainer import EmbeddingTrainer, TrainingConfig
+    from trainer import EmbeddingTrainerV2 as EmbeddingTrainer, TrainingConfig
     import numpy as np
     
     print("\n" + "=" * 70)
@@ -800,7 +889,9 @@ def run_joint_supervised(args):
         learning_rate=args.learning_rate,
         use_lora=use_lora,
         output_dir=args.output_dir,
-        result_dir=args.result_dir
+        result_dir=args.result_dir,
+        model_size=args.model_size,
+        exp_dir=args.exp_dir
     )
     
     trainer = EmbeddingTrainer(config=config, dev_mode=args.dev)
@@ -988,7 +1079,7 @@ def run_generate(args):
     Generate embeddings using a trained model checkpoint.
     This is used after joint training to generate embeddings for each dataset.
     """
-    from trainer import EmbeddingTrainer, TrainingConfig
+    from trainer import EmbeddingTrainerV2 as EmbeddingTrainer, TrainingConfig
     import numpy as np
     
     print("\n" + "=" * 70)
@@ -1010,7 +1101,9 @@ def run_generate(args):
         learning_rate=args.learning_rate,
         use_lora=use_lora,
         output_dir=args.output_dir,
-        result_dir=args.result_dir
+        result_dir=args.result_dir,
+        model_size=args.model_size,
+        exp_dir=args.exp_dir
     )
     
     trainer = EmbeddingTrainer(config=config, dev_mode=args.dev)
