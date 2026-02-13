@@ -73,7 +73,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Baseline Options:"
             echo "  --baseline      Use baseline model mode"
-            echo "  --model         Baseline model name: lda, hdp, stm, btm, nvdm, gsm, prodlda, ctm, etm, dtm, bertopic"
+            echo "  --model         Baseline model name: lda, hdp, stm (requires covariates), btm, nvdm, gsm, prodlda, ctm, etm, dtm, bertopic"
             echo "  --model_exp     Model experiment ID (default: auto-select latest)"
             echo ""
             echo "Common Options:"

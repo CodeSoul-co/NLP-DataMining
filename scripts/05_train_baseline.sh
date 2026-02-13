@@ -8,7 +8,7 @@
 #   Traditional Models:
 #     - lda:      Latent Dirichlet Allocation (sklearn, fast, no GPU needed)
 #     - hdp:      Hierarchical Dirichlet Process (auto topic number)
-#     - stm:      Structural Topic Model (supports covariates)
+#     - stm:      Structural Topic Model (requires covariates/metadata)
 #     - btm:      Biterm Topic Model (for short texts like tweets)
 #
 #   Neural Models:
@@ -44,7 +44,7 @@ LEARNING_RATE=0.002
 GPU=0
 LANGUAGE="en"
 SKIP_TRAIN=false
-SKIP_VIZ=true
+SKIP_VIZ=false
 DATA_EXP=""
 EXP_NAME=""
 
@@ -86,7 +86,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 --dataset <name> --models <model_list> [options]"
             echo ""
             echo "Supported Models:"
-            echo "  Traditional: lda, hdp, stm, btm"
+            echo "  Traditional: lda, hdp, stm (requires covariates), btm"
             echo "  Neural:      etm, ctm, dtm, nvdm, gsm, prodlda, bertopic"
             echo ""
             echo "Required:"
@@ -103,7 +103,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --dropout       Dropout rate for neural models (default: 0.2)"
             echo ""
             echo "Model-specific Options:"
-            echo "  --max_iter      Max iterations for LDA/STM (default: 100)"
+            echo "  --max_iter      Max iterations for LDA (default: 100)"
             echo "  --max_topics    Max topics for HDP (default: 150)"
             echo "  --n_iter        Gibbs sampling iterations for BTM (default: 100)"
             echo "  --alpha         Alpha prior for HDP/BTM (default: 1.0)"
@@ -124,7 +124,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 --dataset hatespeech --models lda --num_topics 20"
             echo ""
             echo "  # Train multiple traditional models"
-            echo "  $0 --dataset hatespeech --models lda,hdp,stm,btm --num_topics 20"
+            echo "  $0 --dataset hatespeech --models lda,hdp,btm --num_topics 20"
             echo ""
             echo "  # Train multiple neural models"
             echo "  $0 --dataset hatespeech --models nvdm,gsm,prodlda --num_topics 20 --epochs 150"

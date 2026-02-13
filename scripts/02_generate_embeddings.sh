@@ -24,8 +24,7 @@ set -e
 DATASET=""
 MODE="zero_shot"
 MODEL_SIZE="0.6B"
-MODEL_PATH=""  # Empty = auto-resolve from MODEL_SIZE
-MODEL_PATH_EXPLICIT=false  # Track if user explicitly set --model_path
+MODEL_PATH=""  # Auto-set based on MODEL_SIZE below
 MAX_LENGTH=512
 BATCH_SIZE=16
 EPOCHS=10
@@ -43,7 +42,7 @@ while [[ $# -gt 0 ]]; do
         --dataset) DATASET="$2"; shift 2 ;;
         --mode) MODE="$2"; shift 2 ;;
         --model_size) MODEL_SIZE="$2"; shift 2 ;;
-        --model_path) MODEL_PATH="$2"; MODEL_PATH_EXPLICIT=true; shift 2 ;;
+        --model_path) MODEL_PATH="$2"; shift 2 ;;
         --max_length) MAX_LENGTH="$2"; shift 2 ;;
         --batch_size) BATCH_SIZE="$2"; shift 2 ;;
         --epochs) EPOCHS="$2"; shift 2 ;;
@@ -94,22 +93,21 @@ if [ -z "$DATASET" ]; then
     exit 1
 fi
 
-# Auto-resolve MODEL_PATH from MODEL_SIZE if user did not explicitly set --model_path
-if [ "$MODEL_PATH_EXPLICIT" = false ]; then
-    # Try known locations in order
-    for CANDIDATE in \
-        "/root/autodl-tmp/qwen3_embedding_${MODEL_SIZE}" \
-        "/root/autodl-tmp/embedding_models/qwen3_embedding_${MODEL_SIZE}"; do
-        if [ -d "$CANDIDATE" ]; then
-            MODEL_PATH="$CANDIDATE"
-            break
+# Auto-set MODEL_PATH based on MODEL_SIZE if not explicitly provided
+if [ -z "$MODEL_PATH" ]; then
+    case $MODEL_SIZE in
+        0.6B) MODEL_PATH="/root/autodl-tmp/embedding_models/qwen3_embedding_0.6B" ;;
+        4B)   MODEL_PATH="/root/autodl-tmp/embedding_models/qwen3_embedding_4B" ;;
+        8B)   MODEL_PATH="/root/autodl-tmp/embedding_models/qwen3_embedding_8B" ;;
+        *)    echo "Error: Unknown model size '$MODEL_SIZE'"; exit 1 ;;
+    esac
+    # Fallback to legacy path if embedding_models path doesn't exist
+    if [ ! -d "$MODEL_PATH" ]; then
+        LEGACY_PATH="/root/autodl-tmp/qwen3_embedding_${MODEL_SIZE}"
+        if [ -d "$LEGACY_PATH" ]; then
+            MODEL_PATH="$LEGACY_PATH"
         fi
-    done
-    # Fallback if no directory found
-    if [ -z "$MODEL_PATH" ]; then
-        MODEL_PATH="/root/autodl-tmp/qwen3_embedding_${MODEL_SIZE}"
     fi
-    echo "[INFO] Auto-resolved model path: $MODEL_PATH (from --model_size $MODEL_SIZE)"
 fi
 
 # Set GPU
@@ -161,7 +159,6 @@ CMD="python main.py --mode $MODE --dataset $DATASET"
 CMD="$CMD --model_path $MODEL_PATH --model_size $MODEL_SIZE"
 CMD="$CMD --max_length $MAX_LENGTH --batch_size $BATCH_SIZE"
 CMD="$CMD --epochs $EPOCHS --learning_rate $LEARNING_RATE"
-CMD="$CMD --result_dir /root/autodl-tmp/result"
 
 if [ "$USE_LORA" = false ]; then
     CMD="$CMD --no_lora"

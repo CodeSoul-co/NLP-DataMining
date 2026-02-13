@@ -5,7 +5,8 @@
 # Generate embeddings and BOW matrices for topic modeling
 #
 # Supported Models and their data requirements:
-#   - lda, hdp, stm, btm, nvdm, gsm, prodlda: BOW only
+#   - lda, hdp, btm, nvdm, gsm, prodlda: BOW only
+#   - stm: BOW + covariates (metadata)
 #   - ctm: BOW + SBERT embeddings
 #   - etm: BOW + Word2Vec embeddings
 #   - dtm: BOW + SBERT + time slices
@@ -76,7 +77,8 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 --dataset <name> --model <model_name> [options]"
             echo ""
             echo "Supported Models:"
-            echo "  BOW only:        lda, hdp, stm, btm, nvdm, gsm, prodlda"
+            echo "  BOW only:        lda, hdp, btm, nvdm, gsm, prodlda"
+            echo "  BOW + covariates: stm (requires document-level metadata)"
             echo "  BOW + SBERT:     ctm"
             echo "  BOW + Word2Vec:  etm"
             echo "  BOW + SBERT + Time: dtm"
