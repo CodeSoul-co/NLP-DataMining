@@ -4,7 +4,7 @@
 
 <h1>THETA (θ)</h1>
 
-Textual Hybrid Embedding–based Topic Analysis
+Textual Hybrid Embedding–based Topic Analysis  
 
 </div>
 
@@ -12,17 +12,17 @@ Textual Hybrid Embedding–based Topic Analysis
 
 THETA (θ) is an open-source, research-oriented platform for LLM-enhanced topic analysis in social science. It combines:
 
-- Domain-adaptive document embeddings from Qwen-3 models (0.6B / 4B / 8B)
-  - Zero-shot embedding (no training)
-  - Supervised fine-tuning (with labels)
-  - Unsupervised fine-tuning (SimCSE, no labels)
-- 12 topic models for benchmarking:
-  - **THETA**: Main model using Qwen embeddings
-  - **Traditional**: LDA, HDP (auto topics), STM (covariates), BTM (short texts)
+- Domain-adaptive document embeddings from Qwen-3 models (0.6B/4B/8B)
+  - Zero-shot embedding (no training), or
+  - Supervised/Unsupervised fine-tuning modes
+- Generative topic models with 12 baseline models for comparison:
+  - **THETA**: Main model using Qwen embeddings (0.6B/4B/8B)
+  - **Traditional**: LDA, HDP (auto topics), STM (requires covariates), BTM (short texts)
   - **Neural**: ETM, CTM, DTM (time-aware), NVDM, GSM, ProdLDA, BERTopic
 - Scientific validation via 7 intrinsic metrics (PPL, TD, iRBO, NPMI, C_V, UMass, Exclusivity)
-- Comprehensive visualization with bilingual support (English / Chinese)
-- Fully non-interactive CLI — all scripts accept command-line parameters only, suitable for batch / DLC environments
+- Comprehensive visualization with bilingual support (English/Chinese)
+
+THETA aims to move topic modeling from "clustering with pretty plots" to a reproducible, validated scientific workflow.
 
 ---
 
@@ -30,11 +30,10 @@ THETA (θ) is an open-source, research-oriented platform for LLM-enhanced topic 
 
 - **Hybrid embedding topic analysis**: Zero-shot / Supervised / Unsupervised modes
 - **Multiple Qwen model sizes**: 0.6B (1024-dim), 4B (2560-dim), 8B (4096-dim)
-- **12 baseline models**: LDA, HDP, STM, BTM, ETM, CTM, DTM, NVDM, GSM, ProdLDA, BERTopic
+- **12 Baseline models**: LDA, HDP, STM (requires covariates), BTM, ETM, CTM, DTM, NVDM, GSM, ProdLDA, BERTopic for comparison
 - **Data governance**: Domain-aware cleaning for multiple languages (English, Chinese, German, Spanish)
 - **Unified evaluation**: 7 metrics with JSON/CSV export
 - **Rich visualization**: 20+ chart types with bilingual labels
-- **Non-interactive CLI**: All scripts are pure command-line, no stdin prompts
 
 ---
 
@@ -47,7 +46,7 @@ THETA (θ) is an open-source, research-oriented platform for LLM-enhanced topic 
 | `theta` | Neural | THETA with Qwen embeddings (0.6B/4B/8B) | No | General purpose, high quality |
 | `lda` | Traditional | Latent Dirichlet Allocation (sklearn) | No | Fast baseline, interpretable |
 | `hdp` | Traditional | Hierarchical Dirichlet Process | **Yes** | Unknown topic count |
-| `stm` | Traditional | Structural Topic Model | No | With metadata/covariates |
+| `stm` | Traditional | Structural Topic Model | No | **Requires covariates** (metadata) |
 | `btm` | Traditional | Biterm Topic Model | No | Short texts (tweets, titles) |
 | `etm` | Neural | Embedded Topic Model (Word2Vec + VAE) | No | Word embedding integration |
 | `ctm` | Neural | Contextualized Topic Model (SBERT + VAE) | No | Semantic understanding |
@@ -71,6 +70,10 @@ Choose your model based on:
 │   ├─ SHORT (tweets, titles) → Use BTM                          │
 │   └─ NORMAL/LONG → Continue below                               │
 ├─────────────────────────────────────────────────────────────────┤
+│ Do you have document-level metadata (covariates)?               │
+│   ├─ YES → Use STM (models how metadata affects topics)         │
+│   └─ NO  → Continue below                                       │
+├─────────────────────────────────────────────────────────────────┤
 │ Do you have time-series data?                                   │
 │   ├─ YES → Use DTM                                              │
 │   └─ NO  → Continue below                                       │
@@ -82,36 +85,137 @@ Choose your model based on:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Python API Usage
+
+#### THETA Model Training
+
+```python
+import sys
+sys.path.insert(0, '/root/autodl-tmp/ETM')
+
+from main import run_training
+from config import config_from_args
+import argparse
+
+# Create configuration
+args = argparse.Namespace(
+    dataset='hatespeech',
+    mode='zero_shot',           # zero_shot / supervised / unsupervised
+    model_size='0.6B',          # 0.6B / 4B / 8B
+    num_topics=20,
+    epochs=100,
+    batch_size=64,
+    hidden_dim=512,
+    learning_rate=0.002,
+    kl_start=0.0,
+    kl_end=1.0,
+    kl_warmup=50,
+    patience=10,
+    gpu_id=0,
+    dev_mode=False
+)
+
+config = config_from_args(args)
+run_training(config)
+```
+
+#### Baseline Model Training
+
+```python
+import sys
+sys.path.insert(0, '/root/autodl-tmp/ETM')
+
+from model.baseline_trainer import BaselineTrainer
+
+# Initialize trainer
+trainer = BaselineTrainer(
+    dataset='hatespeech',
+    num_topics=20,
+    vocab_size=5000,
+    data_dir='/root/autodl-tmp/data',
+    result_dir='/root/autodl-tmp/result/baseline'
+)
+
+# Prepare data (generates BOW and SBERT embeddings)
+trainer.prepare_data(generate_sbert=True)
+
+# Train individual models
+lda_result = trainer.train_lda(max_iter=100)
+hdp_result = trainer.train_hdp(max_topics=150)      # Auto topic number
+btm_result = trainer.train_btm(n_iter=100)
+nvdm_result = trainer.train_nvdm(epochs=100, batch_size=64)
+gsm_result = trainer.train_gsm(epochs=100, batch_size=64)
+prodlda_result = trainer.train_prodlda(epochs=100, batch_size=64)
+
+# Or train multiple models at once
+results = trainer.train_all(
+    models=['lda', 'hdp', 'btm', 'nvdm', 'prodlda'],
+    batch_size=64
+)
+
+# Access results
+print(f"LDA theta shape: {lda_result['theta'].shape}")      # (N, K)
+print(f"LDA beta shape: {lda_result['beta'].shape}")        # (K, V)
+print(f"HDP actual topics: {hdp_result['actual_num_topics']}")
+```
+
+### Training Parameters Reference
+
+#### THETA Parameters
+
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| `--num_topics` | int | 20 | 5-100 | Number of topics |
+| `--epochs` | int | 100 | 10-500 | Training epochs |
+| `--batch_size` | int | 64 | 8-512 | Batch size |
+| `--hidden_dim` | int | 512 | 128-1024 | Encoder hidden dimension |
+| `--learning_rate` | float | 0.002 | 1e-5 - 0.1 | Learning rate |
+| `--kl_start` | float | 0.0 | 0-1 | KL annealing start weight |
+| `--kl_end` | float | 1.0 | 0-1 | KL annealing end weight |
+| `--kl_warmup` | int | 50 | 0-epochs | KL warmup epochs |
+| `--patience` | int | 10 | 1-50 | Early stopping patience |
+
+#### Baseline Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--num_topics` | int | 20 | Number of topics (ignored for HDP/BERTopic) |
+| `--epochs` | int | 100 | Training epochs (neural models only) |
+| `--batch_size` | int | 64 | Batch size (neural models only) |
+| `--hidden_dim` | int | 512 | Hidden dimension (neural models only) |
+| `--learning_rate` | float | 0.002 | Learning rate (neural models only) |
+
 ---
 
-## Project Core Structure
+## Project Structure
 
 ```
-/THETA/
-├── ETM/                            # Main codebase
-│   ├── run_pipeline.py             # Unified entry point (train + eval + viz)
-│   ├── prepare_data.py             # Data preprocessing (BOW + embeddings)
-│   ├── config.py                   # Configuration management
-│   ├── experiment_manager.py       # Experiment directory management
-│   ├── dataclean/                  # Data cleaning module
-│   ├── model/                      # Model implementations
-│   │   ├── theta/                  # THETA main model (Qwen + ETM)
-│   │   ├── baselines/              # 11 baseline models
-│   │   └── vocab_embedder.py       # Vocabulary embedding generator
-│   ├── evaluation/                 # Unified evaluation (7 metrics)
-│   │   └── unified_evaluator.py    # TD, iRBO, NPMI, C_V, UMass, Excl, PPL
-│   ├── visualization/              # Visualization tools (20+ chart types)
-│   │   └── run_visualization.py    # Bilingual visualization entry point
-│   ├── models_config/              # Model configuration registry
-│   │   └── model_config.py         # Data requirements per model
-│   └── utils/                      # Utilities
-│       └── result_manager.py       # Result directory management
-├── embedding/                      # Qwen embedding generation
-│   ├── main.py                     # Embedding generation entry point
-│   ├── embedder.py                 # Zero-shot / fine-tuned embedding
-│   ├── trainer.py                  # LoRA fine-tuning (supervised/unsupervised)
-│   └── data_loader.py              # Dataset loader
-├── scripts/                        # Shell scripts (all non-interactive)
+/root/
+├── ETM/                          # Main codebase
+│   ├── run_pipeline.py           # Unified entry point
+│   ├── prepare_data.py           # Data preprocessing
+│   ├── config.py                 # Configuration management
+│   ├── dataclean/                # Data cleaning module
+│   ├── model/                    # Model implementations
+│   │   ├── theta/                # THETA main model
+│   │   ├── baselines/            # 12 baseline models
+│   │   └── _reference/           # Reference implementations
+│   ├── evaluation/               # Evaluation metrics
+│   ├── visualization/            # Visualization tools
+│   └── utils/                    # Utilities 
+├── agent/                        # Agent system
+│   ├── api.py                    # FastAPI endpoints
+│   ├── core/                     # Agent implementations
+│   ├── config/                   # Configuration management
+│   ├── prompts/                  # Prompt templates
+│   ├── utils/                    # LLM and vision utilities
+│   └── docs/                     # API documentation
+├── scripts/                      # Shell scripts for automation
+├── embedding/                     # Qwen embedding generation
+│   ├── main.py                    # Embedding generation main codebase
+│   ├── embedder.py                # Embedding
+│   ├── trainer.py                 # Training (supervised/unsupervised)
+│   ├── data_loader.py             # Dataloader
 ```
 
 ---
@@ -198,6 +302,8 @@ All scripts are **non-interactive** (pure command-line parameters), suitable for
 | `10_quick_start_english.sh` | Quick start for English datasets |
 | `11_quick_start_chinese.sh` | Quick start for Chinese datasets |
 | `12_train_multi_gpu.sh` | Multi-GPU training with DistributedDataParallel |
+| `13_test_agent.sh` | Test LLM Agent connection and functionality |
+| `14_start_agent_api.sh` | Start the Agent API server (FastAPI) |
 
 ---
 
@@ -206,47 +312,34 @@ All scripts are **non-interactive** (pure command-line parameters), suitable for
 ### Quick Start (One Command)
 
 ```bash
-# English dataset
+# English dataset — one-stop data prep + THETA training
 bash scripts/10_quick_start_english.sh my_dataset
 
-# Chinese dataset (Chinese visualization labels)
+# Chinese dataset — one-stop data prep + THETA training (Chinese visualization)
 bash scripts/11_quick_start_chinese.sh my_chinese_dataset
 ```
 
-### Step-by-Step Pipeline
+### End-to-End Pipeline (Step by Step)
 
 ```bash
-cd /your_file_path
-S=scripts
-
 # Step 1: Install dependencies
-bash $S/01_setup.sh
+bash scripts/01_setup.sh
 
-# Step 2: Clean raw data (preview columns first, then clean)
-bash $S/02_clean_data.sh --input data/hatespeech/hatespeech_text_only.csv --preview
-bash $S/02_clean_data.sh --input data/hatespeech/hatespeech_text_only.csv \
-    --language english --text_column cleaned_content --label_columns Label --keep_all
+# Step 2: Clean raw data (preview columns first, then clean with explicit text column)
+bash scripts/02_clean_data.sh --input data/edu_data/edu_data_raw.csv --preview
+bash scripts/02_clean_data.sh --input data/edu_data/edu_data_raw.csv --language chinese --text_column cleaned_content
 
-# Step 3a: Prepare THETA data (BOW + Qwen embeddings)
-bash $S/03_prepare_data.sh --dataset hatespeech --model theta \
-    --model_size 4B --mode zero_shot --vocab_size 5000 --gpu 0 --language english
+# Step 3: Prepare data (BOW + embeddings)
+bash scripts/03_prepare_data.sh --dataset edu_data --model theta --model_size 0.6B --mode zero_shot --vocab_size 3500
 
-# Step 3b: Prepare baseline data (BOW for traditional/neural models)
-bash $S/03_prepare_data.sh --dataset hatespeech --model lda --vocab_size 5000 --language english
+# Step 4: Train THETA
+bash scripts/04_train_theta.sh --dataset edu_data --model_size 0.6B --mode zero_shot --num_topics 20 --language zh
 
-# Step 4: Train THETA (includes training + evaluation + visualization)
-bash $S/04_train_theta.sh --dataset hatespeech --model_size 4B --mode zero_shot \
-    --num_topics 20 --epochs 50 --gpu 0 --language en
+# Step 5: Train baselines for comparison
+bash scripts/05_train_baseline.sh --dataset edu_data --models lda,prodlda,etm --num_topics 20 --epochs 100
 
-# Step 5: Train baselines
-bash $S/05_train_baseline.sh --dataset hatespeech --models lda \
-    --num_topics 20 --vocab_size 5000 --language en --with-viz
-bash $S/05_train_baseline.sh --dataset hatespeech --models prodlda \
-    --num_topics 20 --epochs 50 --vocab_size 5000 --gpu 0 --language en --with-viz
-
-# Step 6: Compare models
-bash $S/08_compare_models.sh --dataset hatespeech \
-    --models lda,prodlda --num_topics 20
+# Step 6: Compare all models
+bash scripts/08_compare_models.sh --dataset edu_data --models lda,prodlda,etm --num_topics 20
 ```
 
 ---
@@ -309,7 +402,8 @@ One-stop data preparation for all 12 models. Generates BOW matrix and model-spec
 
 | Model | Type | Data Needed |
 |-------|------|-------------|
-| lda, hdp, stm, btm | Traditional | BOW only |
+| lda, hdp, btm | Traditional | BOW only |
+| stm | Traditional | BOW + covariates (document metadata) |
 | nvdm, gsm, prodlda | Neural | BOW only |
 | etm | Neural | BOW + Word2Vec |
 | ctm | Neural | BOW + SBERT |
@@ -322,7 +416,7 @@ One-stop data preparation for all 12 models. Generates BOW matrix and model-spec
 ```bash
 # ---- Baseline models ----
 
-# BOW-only models (lda, hdp, stm, btm, nvdm, gsm, prodlda share this)
+# BOW-only models (lda, hdp, btm, nvdm, gsm, prodlda share this)
 bash scripts/03_prepare_data.sh \
     --dataset edu_data --model lda --vocab_size 3500 --language chinese
 
@@ -376,7 +470,7 @@ bash scripts/03_prepare_data.sh --dataset mydata \
 | Parameter | Required | Description | Default |
 |-----------|----------|-------------|---------|
 | `--dataset` | ✓ | Dataset name | - |
-| `--model` | ✓ | Target model: lda, hdp, stm, btm, nvdm, gsm, prodlda, ctm, etm, dtm, bertopic, theta | - |
+| `--model` | ✓ | Target model: lda, hdp, stm (requires covariates), btm, nvdm, gsm, prodlda, ctm, etm, dtm, bertopic, theta | - |
 | `--model_size` | | Qwen model size (theta only): 0.6B, 4B, 8B | 0.6B |
 | `--mode` | | Embedding mode (theta only): zero_shot, unsupervised, supervised | zero_shot |
 | `--vocab_size` | | Vocabulary size | 5000 |
@@ -507,13 +601,39 @@ bash scripts/05_train_baseline.sh --dataset edu_data --models hdp \
 
 # ============================================================
 # 3. STM — Structural Topic Model
-#    Type: Traditional | Data: BOW only
+#    Type: Traditional | Data: BOW + covariates (document metadata)
+#    REQUIRES covariates — will be SKIPPED if dataset has no metadata
 #    Specific params: --max_iter
 # ============================================================
-bash scripts/05_train_baseline.sh --dataset edu_data --models stm --num_topics 20
+#
+# STM requires document-level covariates (metadata columns like year, source, category).
+# If your dataset has no covariates configured, STM will be automatically skipped.
+#
+# How to use STM:
+#
+#   Step 1: Make sure your cleaned CSV has metadata columns (e.g., year, source, category)
+#
+#   Step 2: Register covariates in ETM/config.py → DATASET_CONFIGS:
+#
+#       DATASET_CONFIGS["my_dataset"] = {
+#           "vocab_size": 5000,
+#           "num_topics": 20,
+#           "language": "english",
+#           "covariate_columns": ["year", "source", "category"],  # <-- add this
+#       }
+#
+#   Step 3: Prepare data (same as other BOW models)
+#       bash scripts/03_prepare_data.sh --dataset my_dataset --model stm --vocab_size 5000
+#
+#   Step 4: Train STM
+bash scripts/05_train_baseline.sh --dataset my_dataset --models stm --num_topics 20
 # Full:
-bash scripts/05_train_baseline.sh --dataset edu_data --models stm \
-    --num_topics 20 --max_iter 200 --gpu 0 --language zh --with-viz
+bash scripts/05_train_baseline.sh --dataset my_dataset --models stm \
+    --num_topics 20 --max_iter 200 --gpu 0 --language en --with-viz
+#
+# If no covariates are configured, you'll see:
+#   [SKIP] STM: STM requires document-level covariates (metadata)...
+# In that case, use CTM (same logistic-normal prior, no covariates needed) or LDA instead.
 
 # ============================================================
 # 4. BTM — Biterm Topic Model (best for short texts)
@@ -611,8 +731,9 @@ bash scripts/05_train_baseline.sh --dataset edu_data --models bertopic \
 # ============================================================
 
 # All BOW-only models (share the same data_exp)
+# Note: STM is excluded — it requires covariates metadata
 bash scripts/05_train_baseline.sh --dataset edu_data \
-    --models lda,hdp,stm,btm,nvdm,gsm,prodlda \
+    --models lda,hdp,btm,nvdm,gsm,prodlda \
     --num_topics 20 --epochs 100
 
 # Models needing special data (train separately)
@@ -653,7 +774,7 @@ bash scripts/05_train_baseline.sh --dataset edu_data --models lda --num_topics 2
 
 | Parameter | Models | Description | Default |
 |-----------|--------|-------------|---------|
-| `--max_iter` | lda, stm | Max iterations | 100 |
+| `--max_iter` | lda | Max iterations | 100 |
 | `--max_topics` | hdp | Max topic count | 150 |
 | `--n_iter` | btm | Gibbs sampling iterations | 100 |
 | `--alpha` | hdp, btm | Alpha prior | 1.0 |
@@ -678,7 +799,6 @@ bash scripts/06_visualize.sh \
 
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model lda --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model hdp --num_topics 150 --language zh
-bash scripts/06_visualize.sh --baseline --dataset edu_data --model stm --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model btm --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model nvdm --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model gsm --num_topics 20 --language zh
@@ -718,7 +838,6 @@ Standalone evaluation with 7 unified metrics.
 # Evaluate all 11 baseline models
 bash scripts/07_evaluate.sh --dataset edu_data --model lda --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model hdp --num_topics 150
-bash scripts/07_evaluate.sh --dataset edu_data --model stm --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model btm --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model nvdm --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model gsm --num_topics 20
@@ -752,7 +871,7 @@ Cross-model metric comparison table.
 # Compare all baseline models
 bash scripts/08_compare_models.sh \
     --dataset edu_data \
-    --models lda,hdp,stm,btm,nvdm,gsm,prodlda,ctm,etm,dtm,bertopic \
+    --models lda,hdp,btm,nvdm,gsm,prodlda,ctm,etm,dtm,bertopic \
     --num_topics 20
 
 # Compare specific models
@@ -761,7 +880,7 @@ bash scripts/08_compare_models.sh \
 
 # Export to CSV
 bash scripts/08_compare_models.sh \
-    --dataset edu_data --models lda,hdp,nvdm,gsm,prodlda,ctm,etm,stm,dtm \
+    --dataset edu_data --models lda,hdp,nvdm,gsm,prodlda,ctm,etm,dtm \
     --num_topics 20 --output comparison.csv
 ```
 
@@ -796,112 +915,260 @@ torchrun --nproc_per_node=2 --master_port=29500 \
     --dataset hatespeech --mode zero_shot --num_topics 20 --epochs 100
 ```
 
-### I) Batch Processing Examples
+### I) Agent API — `14_start_agent_api.sh`
+
+Start the AI Agent API server for interactive analysis and Q&A.
 
 ```bash
-cd /root/autodl-tmp
-S=scripts
+# Start agent API (default port 8000)
+bash scripts/14_start_agent_api.sh --port 8000
 
-# Train THETA 4B on all 5 datasets (each with its own mode)
-for ds_mode in "FCPB zero_shot" "FCPB unsupervised" \
-               "germanCoal zero_shot" "germanCoal unsupervised" \
-               "hatespeech zero_shot" "hatespeech supervised" \
-               "mental_health zero_shot" "mental_health supervised" \
-               "socialTwitter zero_shot" "socialTwitter supervised"; do
-    set -- $ds_mode
-    bash $S/04_train_theta.sh --dataset $1 --model_size 4B --mode $2 \
-        --num_topics 20 --epochs 50 --gpu 0 --language en
+# Test agent connection
+bash scripts/13_test_agent.sh
+```
+
+API endpoints: `POST /chat`, `POST /api/chat/v2`, `POST /api/interpret/metrics`, `POST /api/interpret/topics`, `POST /api/vision/analyze`. See `agent/docs/API_REFERENCE.md` for details.
+
+### J) Batch Processing Examples
+
+```bash
+# Train THETA on multiple datasets
+for dataset in hatespeech mental_health socialTwitter; do
+    bash scripts/04_train_theta.sh --dataset $dataset \
+        --model_size 0.6B --mode zero_shot --num_topics 20
 done
 
-# Train all traditional baselines (CPU, no GPU needed)
-for model in lda stm btm; do
-    for ds in FCPB germanCoal hatespeech mental_health socialTwitter; do
-        bash $S/05_train_baseline.sh --dataset $ds --models $model \
-            --num_topics 20 --vocab_size 5000 --language en --with-viz
-    done
-done
-
-# HDP (auto topic number, no --num_topics)
-for ds in FCPB germanCoal hatespeech mental_health socialTwitter; do
-    bash $S/05_train_baseline.sh --dataset $ds --models hdp \
-        --vocab_size 5000 --language en --with-viz
-done
-
-# Train all neural baselines (GPU required, --epochs needed)
-for model in nvdm gsm prodlda etm ctm; do
-    for ds in FCPB germanCoal hatespeech mental_health socialTwitter; do
-        bash $S/05_train_baseline.sh --dataset $ds --models $model \
-            --num_topics 20 --epochs 50 --vocab_size 5000 --gpu 0 --language en --with-viz
-    done
-done
-
-# BERTopic (auto topic number, no --num_topics or --epochs)
-for ds in FCPB germanCoal hatespeech mental_health socialTwitter; do
-    bash $S/05_train_baseline.sh --dataset $ds --models bertopic \
-        --vocab_size 5000 --gpu 0 --language en --with-viz
-done
-
-# Compare different topic numbers for THETA
+# Compare different topic numbers
 for k in 10 15 20 25 30; do
-    bash $S/04_train_theta.sh --dataset hatespeech \
-        --model_size 4B --mode zero_shot --num_topics $k --epochs 50 --gpu 0
+    bash scripts/04_train_theta.sh --dataset hatespeech \
+        --model_size 0.6B --mode zero_shot --num_topics $k
 done
 
-# Visualize all trained baselines for a dataset
-for model in lda hdp stm btm nvdm gsm prodlda etm ctm bertopic; do
-    bash $S/06_visualize.sh --baseline --dataset hatespeech \
+# Generate visualizations for all trained baseline models
+for model in lda etm ctm prodlda; do
+    bash scripts/06_visualize.sh --baseline --dataset hatespeech \
         --model $model --num_topics 20 --language en
-done
-
-# Evaluate all baselines for a dataset
-for model in lda hdp stm btm nvdm gsm prodlda etm ctm bertopic; do
-    bash $S/07_evaluate.sh --dataset hatespeech --model $model \
-        --num_topics 20 --baseline
-done
-
-# Compare all models on all datasets
-for ds in FCPB germanCoal hatespeech mental_health socialTwitter; do
-    bash $S/08_compare_models.sh --dataset $ds \
-        --models lda,hdp,stm,btm,nvdm,gsm,prodlda,etm,ctm,bertopic --num_topics 20
 done
 ```
 
 ---
 
-## Evaluation Metrics
+## Parameter Reference
 
-THETA provides unified evaluation with 7 intrinsic metrics:
+### run_pipeline.py Parameters
 
-| Metric | Direction | Description |
-|--------|-----------|-------------|
-| TD | Higher is better | Topic Diversity — ratio of unique words across topics |
-| iRBO | Higher is better | Inverse Rank-Biased Overlap — penalizes redundant topics |
-| NPMI | Higher is better | Normalized PMI coherence — word co-occurrence quality |
-| C_V | Higher is better | C_V coherence — sliding window coherence |
-| UMass | Closer to 0 | UMass coherence — document co-occurrence |
-| Exclusivity | Higher is better | Topic exclusivity — words unique to each topic |
-| PPL | Lower is better | Perplexity — model fit to held-out data |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--dataset` | string | Required | Dataset name |
+| `--models` | string | Required | Model list (comma-separated): theta / lda / etm / ctm / dtm |
+| `--model_size` | string | 0.6B | Qwen model size: 0.6B / 4B / 8B |
+| `--mode` | string | zero_shot | THETA mode: zero_shot / supervised / unsupervised |
+| `--num_topics` | int | 20 | Number of topics (5-100) |
+| `--epochs` | int | 100 | Training epochs (10-500) |
+| `--batch_size` | int | 64 | Batch size (8-512) |
+| `--hidden_dim` | int | 512 | Encoder hidden dimension (128-1024) |
+| `--learning_rate` | float | 0.002 | Learning rate (0.00001-0.1) |
+| `--kl_start` | float | 0.0 | KL annealing start weight (0-1) |
+| `--kl_end` | float | 1.0 | KL annealing end weight (0-1) |
+| `--kl_warmup` | int | 50 | KL warmup epochs |
+| `--patience` | int | 10 | Early stopping patience (1-50) |
+| `--no_early_stopping` | flag | False | Disable early stopping |
+| `--gpu` | int | 0 | GPU device ID |
+| `--language` | string | en | Visualization language: en / zh |
+| `--skip-train` | flag | False | Skip training |
+| `--skip-eval` | flag | False | Skip evaluation |
+| `--skip-viz` | flag | False | Skip visualization |
+| `--check-only` | flag | False | Check files only |
+| `--prepare` | flag | False | Preprocess data first |
+
+### visualization.run_visualization Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--result_dir` | string | Required | Results directory path |
+| `--dataset` | string | Required | Dataset name |
+| `--mode` | string | zero_shot | THETA mode (for THETA models) |
+| `--model_size` | string | 0.6B | Qwen model size (for THETA models) |
+| `--baseline` | flag | False | Is baseline model |
+| `--model` | string | None | Baseline model name: lda / etm / ctm / dtm |
+| `--num_topics` | int | 20 | Number of topics (for baseline models) |
+| `--language` | string | en | Visualization language: en / zh |
+| `--dpi` | int | 300 | Image DPI |
+| `--output_dir` | string | auto | Output directory |
+| `--all` | flag | False | Run for all datasets and models (baseline mode only) |
+
+### prepare_data.py Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `--dataset` | string | Required | Dataset name |
+| `--model` | string | Required | Model type: theta / baseline / dtm |
+| `--model_size` | string | 0.6B | Qwen model size: 0.6B / 4B / 8B |
+| `--mode` | string | zero_shot | Training mode: zero_shot / supervised / unsupervised |
+| `--vocab_size` | int | 5000 | Vocabulary size (1000-20000) |
+| `--batch_size` | int | 32 | Batch size for embedding (8-128) |
+| `--max_length` | int | 512 | Embedding max input length (128-2048) |
+| `--gpu` | int | 0 | GPU device ID |
+| `--language` | string | english | Cleaning language: english / chinese |
+| `--clean` | flag | False | Clean data first |
+| `--raw-input` | string | None | Raw data path (use with --clean) |
+| `--bow-only` | flag | False | Only generate BOW |
+| `--check-only` | flag | False | Only check files |
+| `--time_column` | string | year | Time column name (DTM only) |
+
+---
+
+## Data Governance & Preprocessing
+
+The `dataclean` module provides domain-aware text cleaning:
+
+```bash
+cd ETM/dataclean
+
+# Convert text files to CSV with NLP cleaning
+python main.py convert /path/to/documents output.csv --language chinese --recursive
+
+# Available cleaning operations
+python main.py convert input.txt output.csv \
+  -p remove_urls \
+  -p remove_html_tags \
+  -p remove_stopwords \
+  -p normalize_whitespace
+```
+
+**Supported file formats**: TXT, DOCX, PDF
+
+**Cleaning operations**:
+- `remove_urls` - Remove URLs
+- `remove_html_tags` - Strip HTML tags
+- `remove_punctuation` - Remove punctuation
+- `remove_stopwords` - Remove stopwords (language-aware)
+- `normalize_whitespace` - Normalize whitespace
+- `remove_numbers` - Remove numbers
+- `remove_special_chars` - Remove special characters
+
+---
+
+## Semantic Enhancement (Embeddings)
+
+THETA uses Qwen-3 embedding models with three size options:
+
+| Model Size | Embedding Dim | Use Case |
+|------------|---------------|----------|
+| 0.6B | 1024 | Fast, default |
+| 4B | 2560 | Balanced |
+| 8B | 4096 | Best quality |
+
+**Embedding modes**:
+- `zero_shot` - Direct embedding without fine-tuning
+- `supervised` - Fine-tuned with labeled data
+- `unsupervised` - Fine-tuned without labels
+
+```bash
+# Generate embeddings for a dataset
+python prepare_data.py --dataset my_dataset --model theta --model_size 0.6B --mode zero_shot
+
+# Check if embeddings exist
+python prepare_data.py --dataset my_dataset --model theta --model_size 4B --check-only
+```
+
+**Output artifacts**:
+- `{dataset}_{mode}_embeddings.npy` - Embedding matrix (N x D)
+- `bow_matrix.npz` - Bag-of-words matrix
+- `vocab.json` - Vocabulary list
+
+---
+
+## Topic Modeling
+
+THETA supports multiple topic modeling approaches:
+
+| Model | Description | Time-aware |
+|-------|-------------|------------|
+| THETA | Qwen embedding + ETM | No |
+| LDA | Latent Dirichlet Allocation | No |
+| ETM | Embedded Topic Model | No |
+| CTM | Contextualized Topic Model | No |
+| DTM | Dynamic Topic Model | Yes |
+
+**Training outputs** (organized by ResultManager):
+- `model/theta_k{K}.npy` - Document-topic distribution
+- `model/beta_k{K}.npy` - Topic-word distribution
+- `model/training_history_k{K}.json` - Training history
+- `topicwords/topic_words_k{K}.json` - Top words per topic
+- `topicwords/topic_evolution_k{K}.json` - Topic evolution (DTM only)
+
+---
+
+## Validation & Evaluation
+
+THETA provides unified evaluation with 7 metrics:
+
+| Metric | Description |
+|--------|-------------|
+| PPL | Perplexity - model fit |
+| TD | Topic Diversity |
+| iRBO | Inverse Rank-Biased Overlap |
+| NPMI | Normalized PMI coherence |
+| C_V | C_V coherence |
+| UMass | UMass coherence |
+| Exclusivity | Topic exclusivity |
+
+```python
+from evaluation.unified_evaluator import UnifiedEvaluator
+
+evaluator = UnifiedEvaluator(
+    beta=beta,
+    theta=theta,
+    bow_matrix=bow_matrix,
+    vocab=vocab,
+    model_name="dtm",
+    dataset="edu_data",
+    num_topics=20
+)
+
+metrics = evaluator.evaluate_all()
+evaluator.save_results()  # Saves to evaluation/metrics_k20.json and .csv
+```
 
 **Evaluation outputs**:
-- `evaluation/metrics_k{K}.json` — all metrics in JSON
-- `evaluation/metrics_k{K}.csv` — all metrics in CSV
+- `evaluation/metrics_k{K}.json` - All metrics in JSON format
+- `evaluation/metrics_k{K}.csv` - All metrics in CSV format
 
 ---
 
 ## Visualization
 
-20+ chart types with bilingual support (English / Chinese):
+THETA provides comprehensive visualization with bilingual support (English/Chinese):
 
+```bash
+# Generate visualizations after training
+python run_pipeline.py --dataset edu_data --models dtm --skip-train --language en
+
+# Or use visualization module directly
+python -c "
+from visualization.run_visualization import run_baseline_visualization
+run_baseline_visualization(
+    result_dir='/root/autodl-tmp/result/baseline',
+    dataset='edu_data',
+    model='dtm',
+    num_topics=20,
+    language='zh'
+)
+"
+```
+
+**Generated charts** (20+ types):
 - Topic word bars, word clouds, topic similarity heatmap
 - Document clustering (UMAP), topic network graph
-- Topic evolution (DTM only), sankey diagrams
-- Training convergence curves, coherence metric plots
+- Topic evolution (DTM), sankey diagrams
+- Training convergence, coherence metrics
 - pyLDAvis interactive HTML
 
 **Output structure**:
 ```
 visualization_k{K}_{lang}_{timestamp}/
-├── global/                    # Cross-topic charts
+├── global/                    # Global charts
 │   ├── topic_table.png
 │   ├── topic_network.png
 │   ├── clustering_heatmap.png
@@ -918,70 +1185,119 @@ visualization_k{K}_{lang}_{timestamp}/
 
 ## Result Directory Structure
 
-**THETA model results**:
-```
-result/{model_size}/{dataset}/
-├── data/exp_*/                # Preprocessed data (BOW + embeddings)
-│   ├── bow/
-│   │   ├── bow_matrix.npy
-│   │   ├── vocab.json
-│   │   └── vocab_embeddings.npy
-│   └── embeddings/
-│       └── embeddings.npy
-├── models/exp_*/              # Trained model outputs
-│   ├── model/
-│   │   ├── theta_k{K}.npy    # Document-topic distribution (N × K)
-│   │   ├── beta_k{K}.npy     # Topic-word distribution (K × V)
-│   │   └── training_history_k{K}.json
-│   ├── evaluation/
-│   │   └── metrics_k{K}.json
-│   ├── topicwords/
-│   │   └── topic_words_k{K}.json
-│   └── visualization_k{K}_{lang}_{timestamp}/
-```
+All results are organized using `ResultManager`:
 
-**Baseline model results**:
 ```
-result/baseline/{dataset}/
-├── data/exp_*/                # Preprocessed data
-│   ├── bow_matrix.npy
+/root/autodl-tmp/result/baseline/{dataset}/{model}/
+├── bow/                    # BOW data and vocabulary
+│   ├── bow_matrix.npz
 │   ├── vocab.json
-│   └── sbert_embeddings.npy   # CTM/BERTopic only
-├── models/{model}/exp_*/      # Per-model outputs
+│   └── vocab.txt
+├── model/                  # Model parameters
 │   ├── theta_k{K}.npy
 │   ├── beta_k{K}.npy
+│   └── training_history_k{K}.json
+├── evaluation/             # Evaluation results
 │   ├── metrics_k{K}.json
-│   └── visualization_k{K}_{lang}_{timestamp}/
+│   └── metrics_k{K}.csv
+├── topicwords/             # Topic words
+│   ├── topic_words_k{K}.json
+│   └── topic_evolution_k{K}.json
+└── visualization_k{K}_{lang}_{timestamp}/
 ```
+
+**Using ResultManager**:
+
+```python
+from utils.result_manager import ResultManager
+
+# Initialize
+manager = ResultManager(
+    result_dir='/root/autodl-tmp/result/baseline',
+    dataset='edu_data',
+    model='dtm',
+    num_topics=20
+)
+
+# Save all results
+manager.save_all(theta, beta, vocab, topic_words, metrics=metrics)
+
+# Load all results
+data = manager.load_all(num_topics=20)
+
+# Migrate old flat structure to new structure
+from utils.result_manager import migrate_baseline_results
+migrate_baseline_results(dataset='edu_data', model='dtm')
+```
+
+---
+
+## Configuration
+
+Dataset configurations are defined in `config.py`:
+
+```python
+DATASET_CONFIGS = {
+    "socialTwitter": {
+        "vocab_size": 5000,
+        "num_topics": 20,
+        "min_doc_freq": 5,
+        "language": "multi",
+    },
+    "hatespeech": {
+        "vocab_size": 8000,
+        "num_topics": 20,
+        "min_doc_freq": 10,
+        "language": "english",
+    },
+    "edu_data": {
+        "vocab_size": 5000,
+        "num_topics": 20,
+        "min_doc_freq": 3,
+        "language": "chinese",
+        "has_timestamp": True,
+    },
+}
+```
+
+**Command-line parameters**:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--dataset` | Dataset name | Required |
+| `--models` | Model list (comma-separated) | Required |
+| `--model_size` | Qwen model size (THETA) | 0.6B |
+| `--mode` | THETA mode | zero_shot |
+| `--num_topics` | Number of topics | 20 |
+| `--epochs` | Training epochs | 100 |
+| `--batch_size` | Batch size | 64 |
+| `--language` | Visualization language | en |
+| `--skip-train` | Skip training | False |
+| `--skip-eval` | Skip evaluation | False |
+| `--skip-viz` | Skip visualization | False |
 
 ---
 
 ## Supported Datasets
 
-| Dataset | Documents | Language | THETA 4B Modes |
-|---------|-----------|----------|----------------|
-| FCPB | ~854K | English | zero_shot, unsupervised |
-| germanCoal | ~9K | German | zero_shot, unsupervised |
-| hatespeech | ~437K | English | zero_shot, supervised |
-| mental_health | ~1M | English | zero_shot, supervised |
-| socialTwitter | ~40K | English/Spanish | zero_shot, supervised |
-
-**Adding a custom dataset**: Place a cleaned CSV with a `text` column (and optionally `label`, `year`) in `data/{dataset_name}/`, then use the scripts directly with `--dataset {dataset_name}`.
+| Dataset | Documents | Language | Time-aware |
+|---------|-----------|----------|------------|
+| socialTwitter | ~40K | Spanish/English | No |
+| hatespeech | ~437K | English | No |
+| mental_health | ~1M | English | No |
+| FCPB | ~854K | English | No |
+| germanCoal | ~9K | German | No |
+| edu_data | ~857 | Chinese | Yes |
 
 ---
 
-## Qwen Embedding Sizes
+## Roadmap
 
-| Model Size | Embedding Dim | VRAM (approx.) | Use Case |
-|------------|---------------|----------------|----------|
-| 0.6B | 1024 | ~2 GB | Fast prototyping |
-| 4B | 2560 | ~10 GB | Balanced quality/speed |
-| 8B | 4096 | ~20 GB | Best quality |
-
-**Embedding modes**:
-- `zero_shot` — use pre-trained Qwen directly (no fine-tuning)
-- `supervised` — LoRA fine-tuning with classification loss (requires `--label_column`)
-- `unsupervised` — LoRA fine-tuning with SimCSE / autoregressive LM loss
+- v0.1: Unified dataset interface + zero-shot embeddings + ETM baseline
+- v0.2: Multiple Qwen model sizes + coherence/perplexity reports
+- v0.3: DTM topic evolution + bilingual visualizations
+- v0.4: ResultManager + standardized output structure
+- v1.0: Reproducible benchmark suite (datasets, baselines, downstream tasks)
 
 ---
 
@@ -1000,6 +1316,22 @@ result/baseline/{dataset}/
 ## License
 
 Apache-2.0
+
+---
+
+## Contributing
+
+Contributions are welcome:
+
+- New dataset adapters
+- Topic visualization modules
+- Evaluation and reproducibility scripts
+- Documentation improvements
+
+**Suggested workflow**:
+1. Fork the repo and create a feature branch
+2. Add a minimal reproducible example or tests
+3. Open a pull request
 
 ---
 
@@ -1024,16 +1356,145 @@ A: No. Qwen-3 is the reference backbone, but THETA is designed to be model-agnos
 
 A: ETM learns static topics across the corpus; DTM (Dynamic Topic Model) models topic evolution over time and requires timestamps.
 
-**Q: Can I add my own dataset?**
+**Q: Why is STM skipped when I try to train it? How do I use STM?**
 
-A: Yes. Place a cleaned CSV with a `text` column in `data/my_dataset/`, then run:
+A: STM (Structural Topic Model) requires document-level covariates (metadata such as year, source, category). Unlike LDA, STM models how metadata influences topic prevalence, so covariates are mandatory. If your dataset doesn't have covariates configured, STM will be automatically skipped.
+
+To use STM:
 
 ```bash
-bash scripts/03_prepare_data.sh --dataset my_dataset --model theta \
-    --model_size 4B --mode zero_shot --vocab_size 5000 --language english --gpu 0
-bash scripts/04_train_theta.sh --dataset my_dataset --model_size 4B \
-    --mode zero_shot --num_topics 20 --epochs 50 --gpu 0 --language en
+# 1. Make sure your cleaned CSV has metadata columns (e.g., year, source, category)
+
+# 2. Register covariates in ETM/config.py:
+#    DATASET_CONFIGS["my_dataset"] = {
+#        "vocab_size": 5000,
+#        "num_topics": 20,
+#        "language": "english",
+#        "covariate_columns": ["year", "source", "category"],  # <-- required for STM
+#    }
+
+# 3. Prepare data
+bash scripts/03_prepare_data.sh --dataset my_dataset --model stm --vocab_size 5000
+
+# 4. Train STM
+bash scripts/05_train_baseline.sh --dataset my_dataset --models stm --num_topics 20
 ```
+
+If your dataset has no meaningful metadata, use CTM (same logistic-normal prior, no covariates needed) or LDA instead.
+
+**Q: Can I add my own dataset?**
+
+A: Yes. Prepare a cleaned CSV with `text` column (and optionally `year` for DTM, or metadata columns for STM), then add configuration to `config.py`:
+
+```python
+DATASET_CONFIGS["my_dataset"] = {
+    "vocab_size": 5000,
+    "num_topics": 20,
+    "min_doc_freq": 5,
+    "language": "english",
+    # Optional: for STM (document-level metadata)
+    # "covariate_columns": ["year", "source", "category"],
+    # Optional: for DTM (time-aware)
+    # "has_timestamp": True,
+}
+```
+
+---
+
+## Agent System
+
+THETA includes an intelligent agent system built on **LangChain + LangGraph**, providing:
+
+### Features
+
+- **LangChain ReAct Agent**: Autonomous tool-calling agent that can execute the full pipeline (clean → prepare → train → evaluate → visualize) via natural language
+- **11 Built-in Tools**: `list_datasets`, `list_experiments`, `clean_data`, `prepare_data`, `train_theta`, `train_baseline`, `visualize`, `evaluate_model`, `compare_models`, `get_training_results`, `list_visualizations`
+- **Multi-provider LLM**: Supports DeepSeek, Qwen, OpenAI via unified `ChatOpenAI` interface
+- **Metric Interpretation**: Human-readable explanations of evaluation metrics
+- **Topic Interpretation**: Semantic analysis of discovered topics
+- **Vision Analysis**: Analyze charts using Qwen3-VL
+- **Multi-turn Conversation**: Session-based dialogue with context management
+- **Streaming**: SSE streaming responses for real-time feedback
+
+### Starting the Agent API
+
+```bash
+# Start the agent API server
+bash scripts/14_start_agent_api.sh
+
+# Or manually
+cd /root/autodl-tmp
+python -m agent.api
+```
+
+API will be available at `http://localhost:8000` with Swagger docs at `/docs`.
+
+### Configuration
+
+Create a `.env` file in the `agent/` directory:
+
+```bash
+# LLM Provider (deepseek, qwen, openai)
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=your-api-key-here
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+
+# Or use Qwen
+# LLM_PROVIDER=qwen
+# DASHSCOPE_API_KEY=your-dashscope-api-key
+
+# Vision API (Qwen3-VL)
+QWEN_VISION_API_KEY=your-dashscope-api-key
+QWEN_VISION_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+
+# LLM Settings
+LLM_TEMPERATURE=0.7
+LLM_MAX_TOKENS=2000
+LLM_TIMEOUT=120
+```
+
+### Python Usage
+
+```python
+from agent import THETAAgent
+
+# Create agent (reads config from .env)
+agent = THETAAgent(provider="deepseek", temperature=0.3)
+
+# Chat with the agent
+response = agent.chat("列出所有可用的数据集")
+print(response)
+
+# Multi-turn conversation
+response = agent.chat("用 edu_data 训练一个 LDA 模型，20 个主题", session_id="s1")
+response = agent.chat("训练结果怎么样？", session_id="s1")
+```
+
+### API Endpoints
+
+**LangChain Agent (v3 — recommended)**:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/agent/chat` | POST | Agent chat (auto tool-calling) |
+| `/api/agent/chat/stream` | POST | Agent chat with SSE streaming |
+| `/api/agent/sessions` | GET | List active sessions |
+| `/api/agent/sessions/{id}` | DELETE | Clear session history |
+| `/api/agent/tools` | GET | List available tools |
+
+**Legacy endpoints** (still available):
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/chat` | POST | Simple Q&A chat |
+| `/api/chat/v2` | POST | Multi-turn conversation |
+| `/api/interpret/metrics` | POST | Interpret evaluation metrics |
+| `/api/interpret/topics` | POST | Interpret topic semantics |
+| `/api/interpret/summary` | POST | Generate analysis summary |
+| `/api/vision/analyze` | POST | Analyze image with Qwen3-VL |
+| `/api/vision/analyze-chart` | POST | Analyze chart from job results |
+
+See `agent/docs/API_REFERENCE.md` for complete API documentation.
 
 ---
 
