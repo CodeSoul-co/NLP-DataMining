@@ -216,7 +216,7 @@ bash scripts/11_quick_start_chinese.sh my_chinese_dataset
 ### Step-by-Step Pipeline
 
 ```bash
-cd /root/autodl-tmp
+cd /your_file_path
 S=scripts
 
 # Step 1: Install dependencies
