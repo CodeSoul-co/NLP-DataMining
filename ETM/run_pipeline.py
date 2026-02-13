@@ -11,7 +11,7 @@ Supported Models:
     Traditional Baselines:
         LDA:       Latent Dirichlet Allocation (sklearn)
         HDP:       Hierarchical Dirichlet Process (auto topic number)
-        STM:       Structural Topic Model (with covariates)
+        STM:       Structural Topic Model (requires covariates, auto-skipped if none)
         BTM:       Biterm Topic Model (for short texts)
     
     Neural Baselines:
@@ -64,6 +64,7 @@ from typing import List, Dict, Any
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import DATASET_CONFIGS, RESULT_DIR, DATA_DIR
+from model.baselines.stm import CovariatesRequiredError
 
 # Supported models and model sizes
 # THETA: Main model using Qwen embeddings
@@ -72,7 +73,7 @@ ALL_MODELS = [
     'theta',      # THETA - Main model (Qwen embedding + VAE)
     'lda',        # LDA - Latent Dirichlet Allocation (sklearn)
     'hdp',        # HDP - Hierarchical Dirichlet Process (auto topic number)
-    'stm',        # STM - Structural Topic Model (with covariates)
+    'stm',        # STM - Structural Topic Model (requires covariates, auto-skipped if none)
     'btm',        # BTM - Biterm Topic Model (for short texts)
     'etm',        # ETM - Embedded Topic Model (Word2Vec)
     'ctm',        # CTM - Contextualized Topic Model (SBERT)
@@ -172,7 +173,7 @@ def parse_args():
                         help='Preprocess data (generate embedding and BOW)')
     
     # Model-specific parameters
-    parser.add_argument('--max_iter', type=int, default=100, help='Max iterations for LDA/STM')
+    parser.add_argument('--max_iter', type=int, default=100, help='Max iterations for LDA')
     parser.add_argument('--max_topics', type=int, default=150, help='Max topics for HDP')
     parser.add_argument('--n_iter', type=int, default=100, help='Gibbs sampling iterations for BTM')
     parser.add_argument('--alpha', type=float, default=1.0, help='Alpha prior for HDP/BTM')
@@ -470,13 +471,32 @@ def run_baseline(model_name: str, args) -> Dict[str, Any]:
         print(f"    bash scripts/03_prepare_data.sh --dataset {args.dataset} --model {model_name}")
         return {'model': model_name, 'error': str(e)}
     
-    # Generate model experiment ID
-    model_exp_id = generate_model_exp_id(args.exp_name)
-    
     # New directory structure: baseline/{dataset}/models/{model}/{exp_id}/
     base_dir = Path(RESULT_DIR) / 'baseline' / args.dataset
-    model_dir = base_dir / 'models' / model_name / model_exp_id
-    model_dir.mkdir(parents=True, exist_ok=True)
+    
+    # If skip-train, find the latest existing experiment instead of creating new one
+    if args.skip_train:
+        existing_exps = sorted(
+            (base_dir / 'models' / model_name).glob('exp_*'),
+            key=lambda p: p.name, reverse=True
+        ) if (base_dir / 'models' / model_name).exists() else []
+        # Find the latest exp that has theta files (i.e. was actually trained)
+        model_dir = None
+        for exp_dir in existing_exps:
+            if list(exp_dir.rglob('theta_k*.npy')):
+                model_dir = exp_dir
+                break
+        if model_dir is None:
+            print(f"  [Error] No existing trained experiment found for {model_name}")
+            result['train_status'] = 'no_existing_exp'
+            return result
+        model_exp_id = model_dir.name
+        print(f"  Using existing experiment: {model_exp_id}")
+    else:
+        # Generate model experiment ID
+        model_exp_id = generate_model_exp_id(args.exp_name)
+        model_dir = base_dir / 'models' / model_name / model_exp_id
+        model_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"  Model experiment: {model_exp_id}")
     print(f"  Output directory: {model_dir}")
@@ -498,6 +518,7 @@ def run_baseline(model_name: str, args) -> Dict[str, Any]:
         json.dump(config, f, ensure_ascii=False, indent=2)
     
     # === Training ===
+    train_result = None
     if not args.skip_train:
         print(f"\n[Training {model_name.upper()}]")
         trainer = BaselineTrainer(
@@ -511,37 +532,43 @@ def run_baseline(model_name: str, args) -> Dict[str, Any]:
         trainer.load_preprocessed_data()
         
         # Traditional models
-        if model_name == 'lda':
-            train_result = trainer.train_lda(max_iter=args.max_iter)
-        elif model_name == 'hdp':
-            train_result = trainer.train_hdp(max_topics=args.max_topics, alpha=args.alpha)
-        elif model_name == 'stm':
-            train_result = trainer.train_stm(max_iter=args.max_iter)
-        elif model_name == 'btm':
-            train_result = trainer.train_btm(n_iter=args.n_iter, alpha=args.alpha, beta=args.beta)
-        # Neural models
-        elif model_name == 'etm':
-            train_result = trainer.train_etm(epochs=args.epochs, batch_size=args.batch_size, 
-                                             learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
-        elif model_name == 'ctm':
-            train_result = trainer.train_ctm(inference_type=args.inference_type, epochs=args.epochs, 
-                                             batch_size=args.batch_size, learning_rate=args.learning_rate)
-        elif model_name == 'dtm':
-            train_result = trainer.train_dtm(epochs=args.epochs, batch_size=args.batch_size,
-                                             learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
-        elif model_name == 'nvdm':
-            train_result = trainer.train_nvdm(epochs=args.epochs, batch_size=args.batch_size,
-                                              learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
-        elif model_name == 'gsm':
-            train_result = trainer.train_gsm(epochs=args.epochs, batch_size=args.batch_size,
-                                             learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
-        elif model_name == 'prodlda':
-            train_result = trainer.train_prodlda(epochs=args.epochs, batch_size=args.batch_size,
+        try:
+            if model_name == 'lda':
+                train_result = trainer.train_lda(max_iter=args.max_iter)
+            elif model_name == 'hdp':
+                train_result = trainer.train_hdp(max_topics=args.max_topics, alpha=args.alpha)
+            elif model_name == 'stm':
+                train_result = trainer.train_stm(max_iter=args.max_iter)
+            elif model_name == 'btm':
+                train_result = trainer.train_btm(n_iter=args.n_iter, alpha=args.alpha, beta=args.beta)
+            # Neural models
+            elif model_name == 'etm':
+                train_result = trainer.train_etm(epochs=args.epochs, batch_size=args.batch_size, 
                                                  learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
-        elif model_name == 'bertopic':
-            train_result = trainer.train_bertopic()
-        else:
-            raise ValueError(f"Unknown model: {model_name}")
+            elif model_name == 'ctm':
+                train_result = trainer.train_ctm(inference_type=args.inference_type, epochs=args.epochs, 
+                                                 batch_size=args.batch_size, learning_rate=args.learning_rate)
+            elif model_name == 'dtm':
+                train_result = trainer.train_dtm(epochs=args.epochs, batch_size=args.batch_size,
+                                                 learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
+            elif model_name == 'nvdm':
+                train_result = trainer.train_nvdm(epochs=args.epochs, batch_size=args.batch_size,
+                                                  learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
+            elif model_name == 'gsm':
+                train_result = trainer.train_gsm(epochs=args.epochs, batch_size=args.batch_size,
+                                                 learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
+            elif model_name == 'prodlda':
+                train_result = trainer.train_prodlda(epochs=args.epochs, batch_size=args.batch_size,
+                                                     learning_rate=args.learning_rate, hidden_dim=args.hidden_dim)
+            elif model_name == 'bertopic':
+                train_result = trainer.train_bertopic()
+            else:
+                raise ValueError(f"Unknown model: {model_name}")
+        except CovariatesRequiredError as e:
+            print(f"\n  [SKIP] {model_name.upper()}: {e}")
+            result['train_status'] = 'skipped_no_covariates'
+            result['skip_reason'] = str(e)
+            return result
         
         result['train_status'] = 'completed'
         result['train_time'] = train_result.get('train_time', 0)
@@ -657,28 +684,109 @@ def run_baseline(model_name: str, args) -> Dict[str, Any]:
         try:
             from visualization.visualization_generator import VisualizationGenerator
             
-            # Load data directly (new structure)
-            theta_path = model_dir / model_name / f'theta_k{args.num_topics}.npy'
-            beta_path = model_dir / model_name / f'beta_k{args.num_topics}.npy'
-            topic_words_path = model_dir / model_name / f'topic_words_k{args.num_topics}.json'
+            # Determine actual num_topics for visualization (same logic as evaluation)
+            viz_num_topics = args.num_topics
+            if model_name in ('hdp', 'bertopic'):
+                if train_result and 'actual_num_topics' in train_result:
+                    viz_num_topics = train_result['actual_num_topics']
+                else:
+                    import glob as glob_mod
+                    for search_pattern in [
+                        str(model_dir / model_name / 'theta_k*.npy'),
+                        str(model_dir / model_name / 'model' / 'theta_k*.npy'),
+                        str(model_dir / f'{model_name}_zeroshot' / 'theta_k*.npy'),
+                    ]:
+                        found = glob_mod.glob(search_pattern)
+                        if found:
+                            import re as re_mod
+                            m = re_mod.search(r'theta_k(\d+)\.npy', found[0])
+                            if m:
+                                viz_num_topics = int(m.group(1))
+                            break
+            
+            # Search multiple possible paths for theta/beta (same as evaluation)
+            theta_path = model_dir / model_name / f'theta_k{viz_num_topics}.npy'
+            beta_path = model_dir / model_name / f'beta_k{viz_num_topics}.npy'
+            
+            # CTM saves to ctm_zeroshot/ or ctm_combined/
+            if not theta_path.exists() and model_name == 'ctm':
+                for suffix in ['zeroshot', 'combined']:
+                    ctm_path = model_dir / f'ctm_{suffix}' / f'theta_k{viz_num_topics}.npy'
+                    if ctm_path.exists():
+                        theta_path = ctm_path
+                        beta_path = model_dir / f'ctm_{suffix}' / f'beta_k{viz_num_topics}.npy'
+                        break
+            
+            # Check directly in model_dir
+            if not theta_path.exists():
+                theta_path = model_dir / f'theta_k{viz_num_topics}.npy'
+                beta_path = model_dir / f'beta_k{viz_num_topics}.npy'
+            
+            # Check model/ subdirectory (HDP/STM/neural models)
+            if not theta_path.exists():
+                theta_path = model_dir / model_name / 'model' / f'theta_k{viz_num_topics}.npy'
+                beta_path = model_dir / model_name / 'model' / f'beta_k{viz_num_topics}.npy'
+            
+            # Find topic_words in same directory as theta
+            topic_words_dir = theta_path.parent
+            topic_words_path = topic_words_dir / f'topic_words_k{viz_num_topics}.json'
             
             if theta_path.exists() and beta_path.exists():
                 theta = np.load(theta_path)
                 beta = np.load(beta_path)
                 
+                # Sanitize: replace inf/nan with 0 to avoid distance matrix errors
+                theta = np.nan_to_num(theta, nan=0.0, posinf=0.0, neginf=0.0)
+                beta = np.nan_to_num(beta, nan=0.0, posinf=0.0, neginf=0.0)
+                
                 # Load vocab from data experiment
                 with open(Path(data_exp_dir) / 'vocab.json', 'r', encoding='utf-8') as f:
                     vocab = json.load(f)
                 
-                # Load topic words if exists
+                # Load or generate topic_words in the format expected by VisualizationGenerator:
+                # [(topic_id, [(word, weight), ...]), ...]
                 topic_words = None
                 if topic_words_path.exists():
                     with open(topic_words_path, 'r', encoding='utf-8') as f:
-                        topic_words = json.load(f)
+                        raw_topic_words = json.load(f)
+                    
+                    if isinstance(raw_topic_words, dict):
+                        # Convert dict format {"topic_0": ["word1", ...]} to list of tuples
+                        topic_words = []
+                        for k, v in sorted(raw_topic_words.items(), key=lambda x: int(x[0].split('_')[-1]) if '_' in x[0] else int(x[0])):
+                            tid = int(k.split('_')[-1]) if '_' in k else int(k)
+                            if isinstance(v, list) and len(v) > 0:
+                                if isinstance(v[0], (list, tuple)):
+                                    words_with_weights = [(w, float(s)) for w, s in v]
+                                else:
+                                    # Just word list, get weights from beta
+                                    words_with_weights = []
+                                    for word in v:
+                                        if word in vocab:
+                                            widx = vocab.index(word)
+                                            weight = float(beta[tid, widx]) if tid < beta.shape[0] else 0.0
+                                        else:
+                                            weight = 0.0
+                                        words_with_weights.append((word, weight))
+                            else:
+                                words_with_weights = []
+                            topic_words.append((tid, words_with_weights))
+                    elif isinstance(raw_topic_words, list):
+                        topic_words = raw_topic_words
+                
+                # Fallback: generate topic_words from beta if not available
+                if topic_words is None:
+                    print(f"  Generating topic_words from beta matrix")
+                    topic_words = []
+                    for tid in range(beta.shape[0]):
+                        top_indices = np.argsort(beta[tid])[-20:][::-1]
+                        words_with_weights = [
+                            (vocab[i] if i < len(vocab) else f'word_{i}', float(beta[tid, i]))
+                            for i in top_indices
+                        ]
+                        topic_words.append((tid, words_with_weights))
                 
                 # Create visualization output directory
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                lang_suffix = 'zh' if args.language == 'zh' else 'en'
                 viz_dir = model_dir / 'visualization'
                 viz_dir.mkdir(parents=True, exist_ok=True)
                 
@@ -695,9 +803,11 @@ def run_baseline(model_name: str, args) -> Dict[str, Any]:
                 result['viz_status'] = 'completed'
             else:
                 print(f"  [Skip] theta/beta files not found")
+                print(f"  Searched: {theta_path}")
                 result['viz_status'] = 'files_not_found'
         except Exception as e:
             print(f"  [Error] {e}")
+            import traceback; traceback.print_exc()
             result['viz_status'] = f'error: {str(e)}'
     else:
         print(f"  [Skip] Visualization")

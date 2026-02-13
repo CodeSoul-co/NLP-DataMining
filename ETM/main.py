@@ -299,11 +299,16 @@ def train_etm(
         logger.info(f"Config: num_topics={config.model.num_topics}, epochs={config.model.epochs}, batch_size={config.model.batch_size}")
     
     # Create dataset
+    # For large datasets, keep BOW in sparse format to avoid massive memory usage
+    use_sparse = doc_embeddings.shape[0] > 200000
+    if use_sparse and is_main_process(local_rank):
+        logger.info(f"Large dataset ({doc_embeddings.shape[0]:,} docs): keeping BOW sparse to save memory")
     dataset = ETMDataset(
         doc_embeddings=doc_embeddings,
         bow_matrix=bow_matrix,
         normalize_bow=True,
-        dev_mode=config.dev_mode
+        dev_mode=config.dev_mode,
+        keep_sparse=use_sparse
     )
     
     # Split data
@@ -316,6 +321,18 @@ def train_etm(
         dataset, [n_train, n_val, n_test],
         generator=torch.Generator().manual_seed(config.seed)
     )
+    
+    # Scale DataLoader workers for large datasets
+    # With keep_sparse=True, BOW is CSR (~few hundred MB) so workers are safe.
+    # But limit workers to avoid excessive memory from forked doc_embeddings tensor.
+    dl_num_workers = config.model.num_workers
+    dl_persistent = config.model.persistent_workers
+    dl_pin_memory = config.model.pin_memory
+    if n_total > 200000:
+        dl_num_workers = min(dl_num_workers, 2)
+        dl_persistent = False
+        if is_main_process(local_rank):
+            logger.info(f"Large dataset ({n_total:,} docs): using num_workers={dl_num_workers}, persistent=False")
     
     # Create samplers for DDP
     train_sampler = None
@@ -331,9 +348,9 @@ def train_etm(
         train_dataset, 
         batch_size=config.model.batch_size, 
         shuffle=(train_sampler is None),  # Don't shuffle if using sampler
-        num_workers=config.model.num_workers,
-        pin_memory=config.model.pin_memory,
-        persistent_workers=config.model.persistent_workers,
+        num_workers=dl_num_workers,
+        pin_memory=dl_pin_memory,
+        persistent_workers=dl_persistent,
         prefetch_factor=config.model.prefetch_factor,
         sampler=train_sampler
     )
@@ -341,18 +358,18 @@ def train_etm(
         val_dataset, 
         batch_size=config.model.batch_size, 
         shuffle=False,
-        num_workers=config.model.num_workers,
-        pin_memory=config.model.pin_memory,
-        persistent_workers=config.model.persistent_workers,
+        num_workers=dl_num_workers,
+        pin_memory=dl_pin_memory,
+        persistent_workers=dl_persistent,
         prefetch_factor=config.model.prefetch_factor
     )
     test_loader = create_dataloader(
         test_dataset, 
         batch_size=config.model.batch_size, 
         shuffle=False,
-        num_workers=config.model.num_workers,
-        pin_memory=config.model.pin_memory,
-        persistent_workers=config.model.persistent_workers,
+        num_workers=dl_num_workers,
+        pin_memory=dl_pin_memory,
+        persistent_workers=dl_persistent,
         prefetch_factor=config.model.prefetch_factor
     )
     
@@ -629,9 +646,23 @@ def save_results(
     
     model.eval()
     with torch.no_grad():
-        # Get theta for all documents
-        doc_emb_tensor = torch.tensor(doc_embeddings, dtype=torch.float32).to(device)
-        theta = model.get_theta(doc_emb_tensor).cpu().numpy()
+        # Get theta for all documents (batch processing for large datasets)
+        n_docs = doc_embeddings.shape[0]
+        if n_docs > 100000:
+            # Process in batches to avoid GPU OOM
+            batch_size = 10000
+            theta_parts = []
+            for start in range(0, n_docs, batch_size):
+                end = min(start + batch_size, n_docs)
+                batch_emb = torch.tensor(doc_embeddings[start:end], dtype=torch.float32).to(device)
+                batch_theta = model.get_theta(batch_emb).cpu().numpy()
+                theta_parts.append(batch_theta)
+                del batch_emb
+            theta = np.concatenate(theta_parts, axis=0)
+            del theta_parts
+        else:
+            doc_emb_tensor = torch.tensor(doc_embeddings, dtype=torch.float32).to(device)
+            theta = model.get_theta(doc_emb_tensor).cpu().numpy()
         
         # Get beta
         beta = model.get_beta().cpu().numpy()
@@ -881,6 +912,11 @@ def run_train(config: PipelineConfig, logger: logging.Logger, local_rank: int = 
             vocab = [line.strip() for line in f]
         vocab_embeddings = np.load(vocab_emb_path)
         logger.info(f"Loaded BOW: shape={bow_matrix.shape}, vocab_size={len(vocab)}")
+        # Convert large dense BOW to sparse to save memory during training
+        if bow_matrix.shape[0] > 200000:
+            logger.info(f"Converting BOW to sparse format to save memory ({bow_matrix.nbytes / 1e9:.1f} GB dense)")
+            bow_matrix = sparse.csr_matrix(bow_matrix)
+            logger.info(f"Sparse BOW: nnz={bow_matrix.nnz:,}, density={bow_matrix.nnz / (bow_matrix.shape[0]*bow_matrix.shape[1]):.4f}")
     else:
         # Generate BOW (first time for this dataset)
         logger.info(f"Generating new BOW for dataset {config.data.dataset}")
