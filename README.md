@@ -84,10 +84,10 @@ Choose your model based on:
 
 ---
 
-## Project Structure
+## Project Core Structure
 
 ```
-/root/autodl-tmp/
+/THETA/
 ├── ETM/                            # Main codebase
 │   ├── run_pipeline.py             # Unified entry point (train + eval + viz)
 │   ├── prepare_data.py             # Data preprocessing (BOW + embeddings)
@@ -112,17 +112,6 @@ Choose your model based on:
 │   ├── trainer.py                  # LoRA fine-tuning (supervised/unsupervised)
 │   └── data_loader.py              # Dataset loader
 ├── scripts/                        # Shell scripts (all non-interactive)
-├── data/                           # Raw and cleaned datasets
-│   ├── FCPB/
-│   ├── germanCoal/
-│   ├── hatespeech/
-│   ├── mental_health/
-│   └── socialTwitter/
-└── result/                         # All outputs
-    ├── 0.6B/{dataset}/             # THETA 0.6B results
-    ├── 4B/{dataset}/               # THETA 4B results
-    ├── 8B/{dataset}/               # THETA 8B results
-    └── baseline/{dataset}/         # Baseline model results
 ```
 
 ---
