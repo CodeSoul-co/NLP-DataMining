@@ -1,0 +1,228 @@
+# =============================================================================
+# THETA Model Configuration
+# =============================================================================
+# This file defines all supported models and their data requirements.
+# To add a new model, simply add a new entry following the format below.
+#
+# Data types:
+#   - bow: Bag-of-Words matrix
+#   - sbert: Sentence-BERT embeddings
+#   - word2vec: Word2Vec embeddings
+#   - time: Time slice information
+#   - qwen: Qwen LLM embeddings
+#   - text: Raw text (for models that process text directly)
+#
+# Model types:
+#   - traditional: Classical probabilistic models (LDA, HDP, etc.)
+#   - neural: Neural network based models (VAE, Transformer, etc.)
+#   - hybrid: Combination of traditional and neural approaches
+# =============================================================================
+
+models:
+  # ============================================
+  # Traditional Probabilistic Models
+  # ============================================
+  lda:
+    name: "Latent Dirichlet Allocation"
+    type: traditional
+    requires: [bow]
+    description: "Classic probabilistic topic model using Dirichlet priors"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      max_iter: {type: int, default: 100, help: "Maximum iterations"}
+      learning_method: {type: str, default: "batch", choices: ["batch", "online"], help: "Learning method"}
+    
+  hdp:
+    name: "Hierarchical Dirichlet Process"
+    type: traditional
+    requires: [bow]
+    description: "Non-parametric extension of LDA, auto-determines topic number"
+    auto_topics: true
+    params:
+      max_topics: {type: int, default: 150, help: "Maximum number of topics"}
+      alpha: {type: float, default: 1.0, help: "Document-topic prior"}
+      gamma: {type: float, default: 1.0, help: "Topic-word prior"}
+    
+  stm:
+    name: "Structural Topic Model"
+    type: traditional
+    requires: [bow, covariates]
+    description: "Topic model that incorporates document-level metadata (covariates). REQUIRES covariates — auto-skipped if dataset has none."
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      max_iter: {type: int, default: 100, help: "Maximum iterations"}
+    
+  btm:
+    name: "Biterm Topic Model"
+    type: traditional
+    requires: [bow]
+    description: "Designed for short texts, models word co-occurrence patterns"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      n_iter: {type: int, default: 100, help: "Gibbs sampling iterations"}
+      alpha: {type: float, default: 1.0, help: "Topic prior"}
+      beta: {type: float, default: 0.01, help: "Word prior"}
+
+  # ============================================
+  # Neural Topic Models (VAE-based)
+  # ============================================
+  nvdm:
+    name: "Neural Variational Document Model"
+    type: neural
+    requires: [bow]
+    description: "VAE-based topic model with Gaussian latent space"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      epochs: {type: int, default: 100, help: "Training epochs"}
+      batch_size: {type: int, default: 64, help: "Batch size"}
+      hidden_dim: {type: int, default: 256, help: "Hidden layer dimension"}
+      learning_rate: {type: float, default: 0.002, help: "Learning rate"}
+      dropout: {type: float, default: 0.2, help: "Dropout rate"}
+    
+  gsm:
+    name: "Gaussian Softmax Model"
+    type: neural
+    requires: [bow]
+    description: "VAE with Gaussian prior and softmax decoder"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      epochs: {type: int, default: 100, help: "Training epochs"}
+      batch_size: {type: int, default: 64, help: "Batch size"}
+      hidden_dim: {type: int, default: 256, help: "Hidden layer dimension"}
+      learning_rate: {type: float, default: 0.002, help: "Learning rate"}
+      dropout: {type: float, default: 0.2, help: "Dropout rate"}
+    
+  prodlda:
+    name: "Product of Experts LDA"
+    type: neural
+    requires: [bow]
+    description: "Neural LDA using product of experts for inference"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      epochs: {type: int, default: 100, help: "Training epochs"}
+      batch_size: {type: int, default: 64, help: "Batch size"}
+      hidden_dim: {type: int, default: 256, help: "Hidden layer dimension"}
+      learning_rate: {type: float, default: 0.002, help: "Learning rate"}
+      dropout: {type: float, default: 0.2, help: "Dropout rate"}
+
+  # ============================================
+  # Contextualized Topic Models
+  # ============================================
+  ctm:
+    name: "Contextualized Topic Model"
+    type: neural
+    requires: [bow, sbert]
+    description: "Combines BOW with pre-trained sentence embeddings"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      epochs: {type: int, default: 100, help: "Training epochs"}
+      batch_size: {type: int, default: 64, help: "Batch size"}
+      learning_rate: {type: float, default: 0.002, help: "Learning rate"}
+      inference_type: {type: str, default: "zeroshot", choices: ["zeroshot", "combined"], help: "Inference type"}
+      early_stopping_patience: {type: int, default: 10, help: "Early stopping patience"}
+    
+  etm:
+    name: "Embedded Topic Model"
+    type: neural
+    requires: [bow, word2vec]
+    description: "Uses word embeddings to improve topic coherence"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      epochs: {type: int, default: 100, help: "Training epochs"}
+      batch_size: {type: int, default: 64, help: "Batch size"}
+      hidden_dim: {type: int, default: 256, help: "Hidden layer dimension"}
+      embedding_dim: {type: int, default: 300, help: "Word embedding dimension"}
+      learning_rate: {type: float, default: 0.002, help: "Learning rate"}
+
+  # ============================================
+  # Dynamic Topic Models
+  # ============================================
+  dtm:
+    name: "Dynamic Topic Model"
+    type: neural
+    requires: [bow, sbert, time]
+    description: "Models topic evolution over time"
+    params:
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      epochs: {type: int, default: 100, help: "Training epochs"}
+      batch_size: {type: int, default: 64, help: "Batch size"}
+      hidden_dim: {type: int, default: 256, help: "Hidden layer dimension"}
+      learning_rate: {type: float, default: 0.002, help: "Learning rate"}
+
+  # ============================================
+  # BERT-based Models
+  # ============================================
+  bertopic:
+    name: "BERTopic"
+    type: neural
+    requires: [sbert, text]
+    description: "BERT embeddings + UMAP + HDBSCAN clustering"
+    auto_topics: true
+    params:
+      n_neighbors: {type: int, default: 15, help: "UMAP n_neighbors"}
+      n_components: {type: int, default: 5, help: "UMAP dimensionality"}
+      min_cluster_size: {type: int, default: 10, help: "HDBSCAN min cluster size"}
+      top_n_words: {type: int, default: 10, help: "Words per topic"}
+
+  # ============================================
+  # Our Method
+  # ============================================
+  theta:
+    name: "THETA"
+    type: neural
+    requires: [bow, qwen]
+    description: "Our proposed method using Qwen LLM embeddings"
+    params:
+      model_size: {type: str, default: "0.6B", choices: ["0.6B", "4B", "8B"], help: "Qwen model size"}
+      mode: {type: str, default: "zero_shot", choices: ["zero_shot", "supervised", "unsupervised"], help: "Training mode"}
+      num_topics: {type: int, default: 20, help: "Number of topics"}
+      epochs: {type: int, default: 100, help: "Training epochs"}
+      batch_size: {type: int, default: 64, help: "Batch size"}
+      hidden_dim: {type: int, default: 512, help: "Hidden layer dimension"}
+      learning_rate: {type: float, default: 0.002, help: "Learning rate"}
+      kl_start: {type: float, default: 0.0, help: "KL annealing start weight"}
+      kl_end: {type: float, default: 1.0, help: "KL annealing end weight"}
+      kl_warmup: {type: int, default: 50, help: "KL warmup epochs"}
+      patience: {type: int, default: 10, help: "Early stopping patience"}
+
+# =============================================================================
+# Data Type Definitions
+# =============================================================================
+data_types:
+  bow:
+    name: "Bag-of-Words"
+    generator: "generate_bow"
+    output_files: [bow_matrix.npy, vocab.json]
+    
+  sbert:
+    name: "Sentence-BERT Embeddings"
+    generator: "generate_sbert_embeddings"
+    output_files: [sbert_embeddings.npy]
+    model_path: "/root/autodl-tmp/ETM/model/baselines/sbert/sentence-transformers/all-MiniLM-L6-v2"
+    
+  word2vec:
+    name: "Word2Vec Embeddings"
+    generator: "generate_word2vec_embeddings"
+    output_files: [word2vec_embeddings.npy]
+    
+  time:
+    name: "Time Slice Information"
+    generator: "generate_time_slices"
+    output_files: [time_slices.json, time_indices.npy]
+    
+  qwen:
+    name: "Qwen LLM Embeddings"
+    generator: "generate_qwen_embeddings"
+    output_files: [embeddings.npy]
+    
+  text:
+    name: "Raw Text"
+    generator: null
+    output_files: []
+
+# =============================================================================
+# Output Directories
+# =============================================================================
+output:
+  baseline: "/root/autodl-tmp/result/baseline"
+  theta: "/root/autodl-tmp/result"
