@@ -17,7 +17,7 @@ THETA (θ) is an open-source, research-oriented platform for LLM-enhanced topic 
   - Supervised/Unsupervised fine-tuning modes
 - Generative topic models with 12 baseline models for comparison:
   - **THETA**: Main model using Qwen embeddings (0.6B/4B/8B)
-  - **Traditional**: LDA, HDP (auto topics), STM (requires covariates), BTM (short texts)
+  - **Traditional**: LDA, HDP (auto topics), STM (covariates), BTM (short texts)
   - **Neural**: ETM, CTM, DTM (time-aware), NVDM, GSM, ProdLDA, BERTopic
 - Scientific validation via 7 intrinsic metrics (PPL, TD, iRBO, NPMI, C_V, UMass, Exclusivity)
 - Comprehensive visualization with bilingual support (English/Chinese)
@@ -30,7 +30,7 @@ THETA aims to move topic modeling from "clustering with pretty plots" to a repro
 
 - **Hybrid embedding topic analysis**: Zero-shot / Supervised / Unsupervised modes
 - **Multiple Qwen model sizes**: 0.6B (1024-dim), 4B (2560-dim), 8B (4096-dim)
-- **12 Baseline models**: LDA, HDP, STM (requires covariates), BTM, ETM, CTM, DTM, NVDM, GSM, ProdLDA, BERTopic for comparison
+- **12 Baseline models**: LDA, HDP, STM, BTM, ETM, CTM, DTM, NVDM, GSM, ProdLDA, BERTopic for comparison
 - **Data governance**: Domain-aware cleaning for multiple languages (English, Chinese, German, Spanish)
 - **Unified evaluation**: 7 metrics with JSON/CSV export
 - **Rich visualization**: 20+ chart types with bilingual labels
@@ -46,7 +46,7 @@ THETA aims to move topic modeling from "clustering with pretty plots" to a repro
 | `theta` | Neural | THETA with Qwen embeddings (0.6B/4B/8B) | No | General purpose, high quality |
 | `lda` | Traditional | Latent Dirichlet Allocation (sklearn) | No | Fast baseline, interpretable |
 | `hdp` | Traditional | Hierarchical Dirichlet Process | **Yes** | Unknown topic count |
-| `stm` | Traditional | Structural Topic Model | No | **Requires covariates** (metadata) |
+| `stm` | Traditional | Structural Topic Model | No | With metadata/covariates |
 | `btm` | Traditional | Biterm Topic Model | No | Short texts (tweets, titles) |
 | `etm` | Neural | Embedded Topic Model (Word2Vec + VAE) | No | Word embedding integration |
 | `ctm` | Neural | Contextualized Topic Model (SBERT + VAE) | No | Semantic understanding |
@@ -69,10 +69,6 @@ Choose your model based on:
 │ What is your text length?                                       │
 │   ├─ SHORT (tweets, titles) → Use BTM                          │
 │   └─ NORMAL/LONG → Continue below                               │
-├─────────────────────────────────────────────────────────────────┤
-│ Do you have document-level metadata (covariates)?               │
-│   ├─ YES → Use STM (models how metadata affects topics)         │
-│   └─ NO  → Continue below                                       │
 ├─────────────────────────────────────────────────────────────────┤
 │ Do you have time-series data?                                   │
 │   ├─ YES → Use DTM                                              │
@@ -402,8 +398,7 @@ One-stop data preparation for all 12 models. Generates BOW matrix and model-spec
 
 | Model | Type | Data Needed |
 |-------|------|-------------|
-| lda, hdp, btm | Traditional | BOW only |
-| stm | Traditional | BOW + covariates (document metadata) |
+| lda, hdp, stm, btm | Traditional | BOW only |
 | nvdm, gsm, prodlda | Neural | BOW only |
 | etm | Neural | BOW + Word2Vec |
 | ctm | Neural | BOW + SBERT |
@@ -416,7 +411,7 @@ One-stop data preparation for all 12 models. Generates BOW matrix and model-spec
 ```bash
 # ---- Baseline models ----
 
-# BOW-only models (lda, hdp, btm, nvdm, gsm, prodlda share this)
+# BOW-only models (lda, hdp, stm, btm, nvdm, gsm, prodlda share this)
 bash scripts/03_prepare_data.sh \
     --dataset edu_data --model lda --vocab_size 3500 --language chinese
 
@@ -470,7 +465,7 @@ bash scripts/03_prepare_data.sh --dataset mydata \
 | Parameter | Required | Description | Default |
 |-----------|----------|-------------|---------|
 | `--dataset` | ✓ | Dataset name | - |
-| `--model` | ✓ | Target model: lda, hdp, stm (requires covariates), btm, nvdm, gsm, prodlda, ctm, etm, dtm, bertopic, theta | - |
+| `--model` | ✓ | Target model: lda, hdp, stm, btm, nvdm, gsm, prodlda, ctm, etm, dtm, bertopic, theta | - |
 | `--model_size` | | Qwen model size (theta only): 0.6B, 4B, 8B | 0.6B |
 | `--mode` | | Embedding mode (theta only): zero_shot, unsupervised, supervised | zero_shot |
 | `--vocab_size` | | Vocabulary size | 5000 |
@@ -601,39 +596,13 @@ bash scripts/05_train_baseline.sh --dataset edu_data --models hdp \
 
 # ============================================================
 # 3. STM — Structural Topic Model
-#    Type: Traditional | Data: BOW + covariates (document metadata)
-#    REQUIRES covariates — will be SKIPPED if dataset has no metadata
+#    Type: Traditional | Data: BOW only
 #    Specific params: --max_iter
 # ============================================================
-#
-# STM requires document-level covariates (metadata columns like year, source, category).
-# If your dataset has no covariates configured, STM will be automatically skipped.
-#
-# How to use STM:
-#
-#   Step 1: Make sure your cleaned CSV has metadata columns (e.g., year, source, category)
-#
-#   Step 2: Register covariates in ETM/config.py → DATASET_CONFIGS:
-#
-#       DATASET_CONFIGS["my_dataset"] = {
-#           "vocab_size": 5000,
-#           "num_topics": 20,
-#           "language": "english",
-#           "covariate_columns": ["year", "source", "category"],  # <-- add this
-#       }
-#
-#   Step 3: Prepare data (same as other BOW models)
-#       bash scripts/03_prepare_data.sh --dataset my_dataset --model stm --vocab_size 5000
-#
-#   Step 4: Train STM
-bash scripts/05_train_baseline.sh --dataset my_dataset --models stm --num_topics 20
+bash scripts/05_train_baseline.sh --dataset edu_data --models stm --num_topics 20
 # Full:
-bash scripts/05_train_baseline.sh --dataset my_dataset --models stm \
-    --num_topics 20 --max_iter 200 --gpu 0 --language en --with-viz
-#
-# If no covariates are configured, you'll see:
-#   [SKIP] STM: STM requires document-level covariates (metadata)...
-# In that case, use CTM (same logistic-normal prior, no covariates needed) or LDA instead.
+bash scripts/05_train_baseline.sh --dataset edu_data --models stm \
+    --num_topics 20 --max_iter 200 --gpu 0 --language zh --with-viz
 
 # ============================================================
 # 4. BTM — Biterm Topic Model (best for short texts)
@@ -731,9 +700,8 @@ bash scripts/05_train_baseline.sh --dataset edu_data --models bertopic \
 # ============================================================
 
 # All BOW-only models (share the same data_exp)
-# Note: STM is excluded — it requires covariates metadata
 bash scripts/05_train_baseline.sh --dataset edu_data \
-    --models lda,hdp,btm,nvdm,gsm,prodlda \
+    --models lda,hdp,stm,btm,nvdm,gsm,prodlda \
     --num_topics 20 --epochs 100
 
 # Models needing special data (train separately)
@@ -774,7 +742,7 @@ bash scripts/05_train_baseline.sh --dataset edu_data --models lda --num_topics 2
 
 | Parameter | Models | Description | Default |
 |-----------|--------|-------------|---------|
-| `--max_iter` | lda | Max iterations | 100 |
+| `--max_iter` | lda, stm | Max iterations | 100 |
 | `--max_topics` | hdp | Max topic count | 150 |
 | `--n_iter` | btm | Gibbs sampling iterations | 100 |
 | `--alpha` | hdp, btm | Alpha prior | 1.0 |
@@ -799,6 +767,7 @@ bash scripts/06_visualize.sh \
 
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model lda --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model hdp --num_topics 150 --language zh
+bash scripts/06_visualize.sh --baseline --dataset edu_data --model stm --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model btm --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model nvdm --num_topics 20 --language zh
 bash scripts/06_visualize.sh --baseline --dataset edu_data --model gsm --num_topics 20 --language zh
@@ -838,6 +807,7 @@ Standalone evaluation with 7 unified metrics.
 # Evaluate all 11 baseline models
 bash scripts/07_evaluate.sh --dataset edu_data --model lda --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model hdp --num_topics 150
+bash scripts/07_evaluate.sh --dataset edu_data --model stm --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model btm --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model nvdm --num_topics 20
 bash scripts/07_evaluate.sh --dataset edu_data --model gsm --num_topics 20
@@ -871,7 +841,7 @@ Cross-model metric comparison table.
 # Compare all baseline models
 bash scripts/08_compare_models.sh \
     --dataset edu_data \
-    --models lda,hdp,btm,nvdm,gsm,prodlda,ctm,etm,dtm,bertopic \
+    --models lda,hdp,stm,btm,nvdm,gsm,prodlda,ctm,etm,dtm,bertopic \
     --num_topics 20
 
 # Compare specific models
@@ -880,7 +850,7 @@ bash scripts/08_compare_models.sh \
 
 # Export to CSV
 bash scripts/08_compare_models.sh \
-    --dataset edu_data --models lda,hdp,nvdm,gsm,prodlda,ctm,etm,dtm \
+    --dataset edu_data --models lda,hdp,nvdm,gsm,prodlda,ctm,etm,stm,dtm \
     --num_topics 20 --output comparison.csv
 ```
 
@@ -1356,35 +1326,9 @@ A: No. Qwen-3 is the reference backbone, but THETA is designed to be model-agnos
 
 A: ETM learns static topics across the corpus; DTM (Dynamic Topic Model) models topic evolution over time and requires timestamps.
 
-**Q: Why is STM skipped when I try to train it? How do I use STM?**
-
-A: STM (Structural Topic Model) requires document-level covariates (metadata such as year, source, category). Unlike LDA, STM models how metadata influences topic prevalence, so covariates are mandatory. If your dataset doesn't have covariates configured, STM will be automatically skipped.
-
-To use STM:
-
-```bash
-# 1. Make sure your cleaned CSV has metadata columns (e.g., year, source, category)
-
-# 2. Register covariates in ETM/config.py:
-#    DATASET_CONFIGS["my_dataset"] = {
-#        "vocab_size": 5000,
-#        "num_topics": 20,
-#        "language": "english",
-#        "covariate_columns": ["year", "source", "category"],  # <-- required for STM
-#    }
-
-# 3. Prepare data
-bash scripts/03_prepare_data.sh --dataset my_dataset --model stm --vocab_size 5000
-
-# 4. Train STM
-bash scripts/05_train_baseline.sh --dataset my_dataset --models stm --num_topics 20
-```
-
-If your dataset has no meaningful metadata, use CTM (same logistic-normal prior, no covariates needed) or LDA instead.
-
 **Q: Can I add my own dataset?**
 
-A: Yes. Prepare a cleaned CSV with `text` column (and optionally `year` for DTM, or metadata columns for STM), then add configuration to `config.py`:
+A: Yes. Prepare a cleaned CSV with `text` column (and optionally `year` for DTM), then add configuration to `config.py`:
 
 ```python
 DATASET_CONFIGS["my_dataset"] = {
@@ -1392,10 +1336,6 @@ DATASET_CONFIGS["my_dataset"] = {
     "num_topics": 20,
     "min_doc_freq": 5,
     "language": "english",
-    # Optional: for STM (document-level metadata)
-    # "covariate_columns": ["year", "source", "category"],
-    # Optional: for DTM (time-aware)
-    # "has_timestamp": True,
 }
 ```
 
