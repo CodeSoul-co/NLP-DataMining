@@ -1,0 +1,21 @@
+# 数据目录 / Data Directory
+# ============================================
+# 此目录用于存放训练数据文件
+# 实际数据存储在 OSS: oss://theta-prod-20260123/data/
+#
+# 目录结构 / Directory Structure:
+# data/
+# ├── {dataset_name}/           # 数据集目录
+# │   ├── {dataset_name}.csv    # 原始数据文件
+# │   └── {dataset_name}_cleaned.csv  # 清洗后的数据
+# └── {job_id}/                 # 用户上传的数据（按 job_id 隔离）
+#     └── uploaded_file.csv
+#
+# 数据文件格式要求 / Data Format Requirements:
+# - CSV 格式，UTF-8 编码
+# - 必须包含 'text' 列（文档内容）
+# - 可选 'label' 列（监督学习标签）
+# - 可选 'timestamp' 列（时间序列模型）
+#
+# 从 OSS 下载数据 / Download from OSS:
+# ossutil cp -r oss://theta-prod-20260123/data/ ./data/

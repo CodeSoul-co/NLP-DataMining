@@ -1,0 +1,170 @@
+# ============================================
+# THETA 项目 .gitignore
+# 只上传训练代码，不上传数据和模型
+# ============================================
+
+# ============ 数据文件 ============
+# 原始数据
+data/
+*.csv
+*.xlsx
+*.xls
+*.json
+!package.json
+!config.json
+!**/config.json
+
+# 预处理数据
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+
+# ============ 模型文件 ============
+# 训练好的模型
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+models/
+checkpoints/
+embedding_models/
+
+# SBERT 模型
+sbert/
+sentence-transformers/
+
+# Word2Vec 模型
+*.w2v
+*.word2vec
+
+# ============ 结果文件 ============
+# 训练结果
+result/
+results/
+output/
+outputs/
+experiments/
+
+# 日志文件
+logs/
+*.log
+
+# 可视化输出
+visualization/output/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+!README*.png
+
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+venv/
+ENV/
+env/
+.venv/
+
+# ============ IDE ============
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# ============ 系统文件 ============
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============ 临时文件 ============
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ============ 敏感信息 ============
+# 环境变量文件（包含密钥）
+.env
+.env.local
+.env.*.local
+*.env
+
+# 密钥文件
+*.pem
+*.key
+secrets/
+credentials/
+
+# ============ 保留的配置文件 ============
+# 这些文件需要上传
+!requirements.txt
+!setup.py
+!setup.cfg
+!pyproject.toml
+!Makefile
+!Dockerfile
+!docker-compose.yml
+!.dockerignore
+
+# ============ 保留目录结构 ============
+# 允许 .gitkeep 文件（用于保留空目录结构）
+!**/.gitkeep
+!.gitkeep
+
+# 保留 data 目录结构（但不上传数据文件）
+!data/
+data/*
+!data/.gitkeep
+!data/README.md
+
+# 保留 embedding_models 目录结构
+!embedding_models/
+embedding_models/*
+!embedding_models/.gitkeep
+!embedding_models/README.md
+
+# 保留 ETM/logs 目录结构
+!ETM/logs/
+ETM/logs/*
+!ETM/logs/.gitkeep
+
+# 保留 ETM/model/baselines/sbert 目录结构（但不上传模型文件）
+!ETM/model/baselines/sbert/
+ETM/model/baselines/sbert/*
+!ETM/model/baselines/sbert/.gitkeep
+!ETM/model/baselines/sbert/README.md

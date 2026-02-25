@@ -1,0 +1,62 @@
+# ============================================================
+# DLC 启动命令 - DTM 数据预处理 + ETM 训练
+# ============================================================
+
+# 方案 1: 先运行 DTM 数据预处理（使用 SBERT），再训练 ETM
+# ------------------------------------------------------------
+
+export THETA_BASE="/mnt"
+export DATA_DIR="/mnt/data"
+export RESULT_DIR="/mnt/result"
+export SBERT_MODEL_PATH="/mnt/code/ETM/model/sbert/sentence-transformers/all-MiniLM-L6-v2"
+
+pip install transformers torch numpy scipy scikit-learn tqdm jieba pandas click PyPDF2 pdfminer.six python-docx pdf2docx sentence-transformers
+
+cd /mnt/code/ETM
+
+# Step 1: DTM 数据预处理（生成 BOW + SBERT 嵌入 + 时间切片）
+# 注意：需要确认数据中有时间列（如 year, date, timestamp 等）
+python prepare_data.py --dataset hatespeech --model dtm --time_column year --vocab_size 5000
+
+# Step 2: ETM 训练
+python main.py train --dataset hatespeech --num_topics 20 --epochs 50
+
+
+# ============================================================
+# 方案 2: 直接使用 SBERT 进行 baseline 预处理（不需要时间列）
+# ------------------------------------------------------------
+
+export THETA_BASE="/mnt"
+export DATA_DIR="/mnt/data"
+export RESULT_DIR="/mnt/result"
+export SBERT_MODEL_PATH="/mnt/code/ETM/model/sbert/sentence-transformers/all-MiniLM-L6-v2"
+
+pip install transformers torch numpy scipy scikit-learn tqdm jieba pandas click PyPDF2 pdfminer.six python-docx pdf2docx sentence-transformers
+
+cd /mnt/code/ETM
+
+# Baseline 数据预处理（生成 BOW + SBERT 嵌入）
+python prepare_data.py --dataset hatespeech --model baseline --vocab_size 5000
+
+# ETM 训练
+python main.py train --dataset hatespeech --num_topics 20 --epochs 50
+
+
+# ============================================================
+# 方案 3: 使用 THETA 模式（Qwen 嵌入，当前正在使用的方式）
+# ------------------------------------------------------------
+
+export THETA_BASE="/mnt"
+export DATA_DIR="/mnt/data"
+export RESULT_DIR="/mnt/result"
+export QWEN_MODEL_PATH="/mnt/embedding_models/qwen3_embedding_0.6B"
+
+pip install transformers torch numpy scipy scikit-learn tqdm jieba pandas click PyPDF2 pdfminer.six python-docx pdf2docx
+
+cd /mnt/code/ETM
+
+# THETA 数据预处理（生成 Qwen 嵌入 + BOW）
+python prepare_data.py --dataset hatespeech --model theta --model_size 0.6B --mode zero_shot --vocab_size 5000
+
+# ETM 训练
+python main.py train --dataset hatespeech --num_topics 20 --epochs 50

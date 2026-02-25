@@ -30,6 +30,7 @@ import {
   Plus,
   Infinity,
   Zap,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -128,6 +129,82 @@ const SCENARIO_LAB_ROW2 = [
     titleEn: "Long-Context Macro Understanding",
     tags: ["政治演讲全篇解析", "长帖语义聚合"],
     icon: FileText,
+  },
+]
+
+/** 案例库：学术论文案例 */
+const RESEARCH_CASES = [
+  {
+    id: 1,
+    title: "A Topic Modeling Comparison Between LDA, NMF, Top2Vec, and BERTopic to Demystify Twitter Posts",
+    author: "Egger R, Yu J",
+    year: "2022",
+    journal: "Frontiers in Sociology",
+    link: "https://www.frontiersin.org/journals/sociology/articles/10.3389/fsoc.2022.886498/full",
+    tags: ["LDA", "BERTopic", "Twitter"],
+  },
+  {
+    id: 2,
+    title: "Computational vs. qualitative: Analyzing different approaches in identifying networked frames",
+    author: "Kermani H, et al.",
+    year: "2023",
+    journal: "Int. Journal of Social Research",
+    link: "https://www.tandfonline.com/doi/full/10.1080/13645579.2023.2186566",
+    tags: ["网络框架", "定性分析"],
+  },
+  {
+    id: 3,
+    title: "AutoTM 2.0: Automatic Topic Modeling Framework for Documents Analysis",
+    author: "Khodorchenko M, et al.",
+    year: "2024",
+    journal: "arXiv",
+    link: "https://arxiv.org/abs/2410.00655",
+    tags: ["自动化", "文档分析"],
+  },
+  {
+    id: 4,
+    title: "Prompting Large Language Models for Topic Modeling",
+    author: "Wang H, et al.",
+    year: "2023",
+    journal: "IEEE",
+    link: "https://ieeexplore.ieee.org/abstract/document/10386113",
+    tags: ["LLM", "提示工程"],
+  },
+  {
+    id: 5,
+    title: "Enhancing Short-Text Topic Modeling with LLM-Driven Context Expansion",
+    author: "Akash P S, et al.",
+    year: "2024",
+    journal: "arXiv",
+    link: "https://arxiv.org/abs/2410.03071",
+    tags: ["短文本", "上下文扩展"],
+  },
+  {
+    id: 6,
+    title: "Topic research in fuzzy domain: Based on LDA topic Modelling",
+    author: "Yu D, et al.",
+    year: "2023",
+    journal: "Information Sciences",
+    link: "https://www.sciencedirect.com/science/article/pii/S0020025523011854",
+    tags: ["模糊领域", "LDA"],
+  },
+  {
+    id: 7,
+    title: "GOOD AND BAD SOCIOLOGY: DOES TOPIC MODELLING MAKE A DIFFERENCE?",
+    author: "Baranowski M, et al.",
+    year: "2021",
+    journal: "Society Register",
+    link: "https://pressto.amu.edu.pl/index.php/sr/article/view/31045",
+    tags: ["社会学", "方法论"],
+  },
+  {
+    id: 8,
+    title: "Exploring Trends in Environmental, Social, and Governance Themes",
+    author: "Park J, et al.",
+    year: "2022",
+    journal: "Frontiers in Psychology",
+    link: "https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2022.890435/full",
+    tags: ["ESG", "情感分析"],
   },
 ]
 
@@ -959,6 +1036,97 @@ export default function LandingPage() {
             ))}
           </motion.div>
         </div>
+      </section>
+
+      {/* 案例库 Research Cases */}
+      <section id="cases" className="max-w-7xl mx-auto px-5 sm:px-6 py-20 sm:py-24 bg-slate-50/50">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-center mb-14"
+        >
+          <h2 className="section-heading text-2xl sm:text-3xl md:text-[1.75rem] mb-3">学术案例库</h2>
+          <p className="text-slate-600 max-w-2xl mx-auto text-[15px] sm:text-base leading-relaxed">
+            探索使用主题模型进行研究的优秀学术论文，获取灵感和方法论参考。
+          </p>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+        >
+          {RESEARCH_CASES.map((paper, index) => (
+            <motion.a
+              key={paper.id}
+              href={paper.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: index * 0.05 }}
+              className="group"
+            >
+              <Card className="h-full border-2 border-slate-200/90 bg-white hover:border-blue-300 hover:shadow-xl hover:shadow-blue-100/50 hover:-translate-y-2 transition-all duration-300 overflow-hidden">
+                {/* 顶部装饰条 */}
+                <div className="h-1 bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400" />
+                
+                <div className="p-5 flex flex-col h-full">
+                  {/* 年份标签 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-md">
+                      {paper.year}
+                    </span>
+                    <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                  </div>
+
+                  {/* 标题 */}
+                  <h3 className="text-sm font-bold text-slate-900 mb-2 line-clamp-3 group-hover:text-blue-600 transition-colors leading-snug">
+                    {paper.title}
+                  </h3>
+
+                  {/* 作者和期刊 */}
+                  <div className="mt-auto space-y-2">
+                    <p className="text-xs text-slate-600 line-clamp-1">
+                      <span className="font-medium">{paper.author}</span>
+                    </p>
+                    <p className="text-xs text-slate-500 italic line-clamp-1">
+                      {paper.journal}
+                    </p>
+
+                    {/* 标签 */}
+                    <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
+                      {paper.tags.slice(0, 3).map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded-full"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </motion.a>
+          ))}
+        </motion.div>
+
+        {/* 查看更多按钮 */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.5 }}
+          className="text-center mt-12"
+        >
+          <p className="text-sm text-slate-400">
+            更多案例持续更新中...
+          </p>
+        </motion.div>
       </section>
 
       {/* 五、价格方案 Pricing */}

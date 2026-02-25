@@ -1,0 +1,23 @@
+# SBERT 模型目录 / SBERT Model Directory
+# ============================================
+# 此目录用于存放 Sentence-BERT 预训练模型
+# 实际模型存储在 OSS: oss://theta-prod-20260123/sbert/
+#
+# 目录结构 / Directory Structure:
+# sbert/
+# └── sentence-transformers/
+#     └── all-MiniLM-L6-v2/     # 默认 SBERT 模型
+#         ├── config.json
+#         ├── model.safetensors  (~90MB)
+#         ├── tokenizer.json
+#         └── vocab.txt
+#
+# 从 OSS 下载模型 / Download from OSS:
+# ossutil cp -r oss://theta-prod-20260123/sbert/ ./ETM/model/baselines/sbert/
+#
+# 或者从 HuggingFace 下载 / Or download from HuggingFace:
+# python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+#
+# DLC 环境自动挂载路径 / DLC Mount Paths:
+# /mnt/sbert/
+# /mnt/embedding_models/sbert/all-MiniLM-L6-v2/

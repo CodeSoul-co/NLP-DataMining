@@ -1,0 +1,185 @@
+# Agent系统设计方案
+
+## 需求
+实现一个agent系统，需要调用api，然后对项目运行的结果进行分析，能够帮助产品使用者来理解解答。
+
+## 实现方案：方案一 + 部分方案二混合
+
+### 新增模块
+
+1. **llm_config.py** - 统一LLM配置管理
+   - LLMConfig 数据类
+   - LLMConfigManager 配置管理器
+   - 支持 qwen/openai/local 多种Provider
+   - 环境变量自动读取
+
+2. **result_interpreter_agent.py** - 结果解读Agent
+   - interpret_metrics(): 解读评估指标（含质量等级评估）
+   - interpret_topics(): 解读主题内容（使用LLM生成语义解读）
+   - generate_summary(): 生成分析摘要
+   - answer_question(): 回答用户问题（支持多轮对话）
+   - 内置指标解读模板（NPMI, TD, iRBO, C_V, UMass, Exclusivity, Significance, Perplexity）
+
+### 增强模块
+
+3. **text_qa_agent.py** - 增强
+   - 添加对话历史管理
+   - 集成 ResultInterpreterAgent
+   - 新增方法：process_with_history(), interpret_metrics(), interpret_topics(), generate_summary()
+
+4. **api.py** - 新增端点
+   - POST /api/interpret/metrics - 解读评估指标
+   - POST /api/interpret/topics - 解读主题内容
+   - POST /api/interpret/summary - 生成分析摘要
+   - POST /api/chat/v2 - 增强版对话（支持多轮）
+
+5. **__init__.py** - 更新导出
+   - 添加 ResultInterpreterAgent
+   - 添加 LLMConfig, LLMConfigManager, get_llm_config
+
+## 使用方式
+
+### 环境变量配置
+```bash
+export DASHSCOPE_API_KEY="your-api-key"
+export DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+export QWEN_MODEL="qwen-plus"
+```
+
+### API调用示例
+
+```python
+# 解读指标
+POST /api/interpret/metrics
+{
+    "job_id": "test_job",
+    "language": "zh"
+}
+
+# 解读主题
+POST /api/interpret/topics
+{
+    "job_id": "test_job",
+    "language": "zh",
+    "use_llm": true
+}
+
+# 生成摘要
+POST /api/interpret/summary
+{
+    "job_id": "test_job",
+    "language": "zh"
+}
+
+# 多轮对话
+POST /api/chat/v2
+{
+    "job_id": "test_job",
+    "message": "这个分析结果说明了什么？",
+    "session_id": "session_001"  # 可选，用于多轮对话
+}
+```
+
+### Python调用示例
+
+```python
+from agent import ResultInterpreterAgent, get_llm_config
+
+# 初始化
+interpreter = ResultInterpreterAgent(
+    base_dir="/root/autodl-tmp",
+    llm_config={"provider": "qwen", "model": "qwen-plus"}
+)
+
+# 解读指标
+metrics_result = interpreter.interpret_metrics("job_001", language="zh")
+
+# 解读主题
+topics_result = interpreter.interpret_topics("job_001", language="zh", use_llm=True)
+
+# 生成摘要
+summary_result = interpreter.generate_summary("job_001", language="zh")
+
+# 多轮对话
+answer1 = interpreter.answer_question("job_001", "主题1讨论的是什么？", session_id="s1")
+answer2 = interpreter.answer_question("job_001", "它和主题2有什么关系？", session_id="s1")
+```
+
+## 文件结构
+
+```
+/root/autodl-tmp/agent/
+├── __init__.py                  # 模块导出（兼容新旧导入路径）
+├── api.py                       # FastAPI接口
+├── agent_integration.py         # Agent集成层
+├── README.md                    # 说明文档
+├── plan                         # 本文件
+│
+├── core/                        # 核心Agent模块
+│   ├── __init__.py
+│   ├── base_agent.py            # Agent基类
+│   ├── data_cleaning_agent.py   # 数据清洗
+│   ├── bow_agent.py             # BOW生成
+│   ├── embedding_agent.py       # 嵌入生成
+│   ├── etm_agent.py             # 主题模型训练
+│   ├── visualization_agent.py   # 可视化
+│   ├── text_qa_agent.py         # 文本问答
+│   ├── vision_qa_agent.py       # 图像问答
+│   ├── report_agent.py          # 报告生成
+│   ├── orchestrator_agent.py    # 流水线编排
+│   └── result_interpreter_agent.py  # 结果解读
+│
+├── prompts/                     # LLM提示词模板
+│   ├── __init__.py
+│   ├── metric_prompts.py        # 指标解读提示词
+│   ├── topic_prompts.py         # 主题分析提示词
+│   ├── qa_prompts.py            # 问答系统提示词
+│   └── report_prompts.py        # 报告生成提示词
+│
+├── utils/                       # 工具函数
+│   ├── __init__.py
+│   ├── file_utils.py            # 文件操作
+│   ├── llm_utils.py             # LLM调用
+│   └── data_utils.py            # 数据处理
+│
+├── config/                      # 配置管理
+│   ├── __init__.py
+│   ├── llm_config.py            # LLM配置
+│   └── settings.py              # 系统配置
+│
+└── tests/                       # 测试用例
+    └── __init__.py
+```
+
+## 导入方式
+
+```python
+# 方式1：从根目录导入（向后兼容）
+from agent import TextQAAgent, ResultInterpreterAgent
+
+# 方式2：从子模块导入
+from agent.core import TextQAAgent, ResultInterpreterAgent
+from agent.config import LLMConfig, get_settings
+from agent.prompts import METRIC_INTERPRETATION_PROMPTS
+from agent.utils import load_json, call_llm_api
+```
+
+## 指标解读模板
+
+| 指标 | 范围 | 良好阈值 | 优秀阈值 | 含义 |
+|------|------|----------|----------|------|
+| NPMI | [-1,1] | >0.1 | >0.2 | 主题连贯性 |
+| C_V | [0,1] | >0.4 | >0.6 | 上下文连贯性 |
+| UMass | (-∞,0] | >-2.0 | >-1.0 | 文档内连贯性 |
+| TD | [0,1] | >0.7 | >0.85 | 主题多样性 |
+| iRBO | [0,1] | >0.7 | >0.85 | 排名多样性 |
+| Exclusivity | [0,1] | >0.3 | >0.5 | 主题排他性 |
+| Significance | [0,1] | >0.03 | >0.05 | 主题显著性 |
+| Perplexity | [1,+∞) | <500 | <200 | 困惑度（越低越好） |
+
+## 完成状态
+- [x] llm_config.py
+- [x] result_interpreter_agent.py
+- [x] text_qa_agent.py 增强
+- [x] api.py 新端点
+- [x] __init__.py 更新

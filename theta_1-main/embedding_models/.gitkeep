@@ -1,0 +1,19 @@
+# 嵌入模型目录 / Embedding Models Directory
+# ============================================
+# 此目录用于存放预训练嵌入模型
+# 实际模型存储在 OSS: oss://theta-prod-20260123/embedding_models/
+#
+# 目录结构 / Directory Structure:
+# embedding_models/
+# └── sbert/
+#     └── all-MiniLM-L6-v2/     # SBERT 模型文件
+#         ├── config.json
+#         ├── pytorch_model.bin 或 model.safetensors
+#         ├── tokenizer.json
+#         └── vocab.txt
+#
+# 从 OSS 下载模型 / Download from OSS:
+# ossutil cp -r oss://theta-prod-20260123/embedding_models/ ./embedding_models/
+#
+# DLC 环境自动挂载路径 / DLC Mount Path:
+# /mnt/embedding_models/

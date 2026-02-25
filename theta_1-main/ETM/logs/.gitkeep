@@ -1,0 +1,11 @@
+# 日志目录 / Logs Directory
+# ============================================
+# 此目录用于存放训练日志文件
+# 日志文件不上传到仓库，但保留目录结构
+#
+# 日志命名格式 / Log Naming Format:
+# {dataset}_{mode}_{timestamp}.log
+#
+# 示例 / Examples:
+# edu_data_zero_shot_20260207_102832.log
+# socialTwitter_supervised_20260212_172457.log

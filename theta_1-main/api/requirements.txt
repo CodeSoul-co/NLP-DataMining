@@ -1,0 +1,15 @@
+# THETA API Dependencies
+fastapi>=0.100.0
+uvicorn>=0.22.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+httpx>=0.24.0
+
+# 阿里云 SDK
+oss2>=2.18.0
+alibabacloud_pai_dlc20201203>=1.0.0
+alibabacloud_tea_openapi>=0.3.0
+
+# 安全相关
+python-jose>=3.3.0
+passlib>=1.7.4
