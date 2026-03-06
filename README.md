@@ -4,7 +4,7 @@
 
 <h1>THETA (θ)</h1>
 
-[![Demo](https://img.shields.io/badge/Demo-theta.code--soul.com-blue?style=flat-square)](https://theta.code-soul.com/)
+[![Platform](https://img.shields.io/badge/Demo-theta.code--soul.com-blue?style=flat-square)](https://theta.code-soul.com/)
 [![HuggingFace](https://img.shields.io/badge/🤗%20HuggingFace-CodeSoulco%2FTHETA-yellow?style=flat-square)](https://huggingface.co/CodeSoulco/THETA)
 
 Textual Hybrid Embedding–based Topic Analysis  
