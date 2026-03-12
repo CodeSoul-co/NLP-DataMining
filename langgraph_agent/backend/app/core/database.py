@@ -55,9 +55,30 @@ async def init_db():
     """Initialize database tables"""
     async with engine.begin() as conn:
         # Import all models to register them with Base
-        from ..models import user, task, dataset  # noqa
+        from ..models import user, task, dataset, project, user_dataset  # noqa
         await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables created")
+    # Migrate existing dataset dirs to user_id=1 (first admin) for backward compatibility
+    try:
+        from sqlalchemy import select
+        from ..models.user import User
+        from ..models.user_dataset import UserDataset
+        if settings.DATA_DIR.exists():
+            async with async_session_maker() as session:
+                admin = await session.execute(select(User).where(User.id == 1))
+                if admin.scalar_one_or_none():
+                    result = await session.execute(select(UserDataset.dataset_name))
+                    existing = {r[0] for r in result.fetchall()}
+                    for d in settings.DATA_DIR.iterdir():
+                        if d.is_dir() and not d.name.startswith(".") and d.name not in existing:
+                            try:
+                                session.add(UserDataset(user_id=1, dataset_name=d.name))
+                                await session.commit()
+                                logger.info(f"Migrated dataset '{d.name}' to user 1")
+                            except Exception:
+                                await session.rollback()
+    except Exception as e:
+        logger.debug(f"Dataset migration skipped: {e}")
 
 
 async def close_db():

@@ -13,14 +13,14 @@ from pathlib import Path
 
 
 # Base paths
-BASE_DIR = Path("/root/autodl-tmp")
-DATA_DIR = BASE_DIR / "data"
+BASE_DIR = Path(os.environ.get("ETM_BASE_DIR", "/root/autodl-tmp"))
+DATA_DIR = Path(os.environ.get("ETM_USER_DATA_DIR", str(BASE_DIR / "data")))
 EMBEDDING_DIR = BASE_DIR / "embedding"
 ETM_DIR = BASE_DIR / "ETM"
 # Unified embedding model storage path
-EMBEDDING_MODELS_DIR = BASE_DIR / "embedding_models"
+EMBEDDING_MODELS_DIR = Path(os.environ.get("ETM_EMBEDDING_MODELS_DIR", str(BASE_DIR / "embedding_models")))
 QWEN_MODEL_PATH = EMBEDDING_MODELS_DIR / "qwen3_embedding_0.6B"  # Default: 0.6B
-RESULT_DIR = BASE_DIR / "result"
+RESULT_DIR = Path(os.environ.get("ETM_USER_RESULT_DIR", str(BASE_DIR / "result")))
 
 # Embedding model paths and dimension mapping
 QWEN_MODEL_PATHS = {

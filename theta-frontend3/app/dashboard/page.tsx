@@ -1,15 +1,29 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { AppShell, type Tab } from "@/components/layout/app-shell"
 import { ProjectHub, type Project } from "@/components/dashboard/project-hub"
 import { NewProjectDialog, type NewProjectData } from "@/components/dashboard/new-project-dialog"
 import { AutoPipeline } from "@/components/project/auto-pipeline"
-import type { ChatMessage } from "@/components/chat/ai-sidebar"
+import type { ChatMessage, SuggestionCard } from "@/components/chat/ai-sidebar"
 import { ProtectedRoute } from "@/components/protected-route"
 import { ETMAgentAPI, DatasetInfo } from "@/lib/api/etm-agent"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import { OverviewTab } from "@/components/results/overview-tab"
+import { TopicWordsTab } from "@/components/results/topic-words-tab"
+import { MetricsTab } from "@/components/results/metrics-tab"
+import { VisualizationTab } from "@/components/results/visualization-tab"
+import { ExportTab } from "@/components/results/export-tab"
 
+/** 指标展示名与方向说明：↑ 越高越好 | ↓ 越低越好 | → 越接近 0 越好 */
 // Helper to generate timestamp
 function getTimestamp() {
   return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
@@ -27,6 +41,8 @@ interface WorkspaceProject extends Project {
   mode?: "zero_shot" | "unsupervised" | "supervised"
   numTopics?: number
   pipelineStatus?: "running" | "completed" | "error"
+  dbProjectId?: number  // 数据库项目 ID，用于更新/删除
+  taskId?: string | null  // 关联的训练任务 ID
 }
 
 function DashboardContent() {
@@ -39,53 +55,242 @@ function DashboardContent() {
   const [isNewProjectDialogOpen, setIsNewProjectDialogOpen] = useState(false)
   const [projects, setProjects] = useState<WorkspaceProject[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [dynamicSuggestions, setDynamicSuggestions] = useState<SuggestionCard[]>([])
+  const [projectTransitionName, setProjectTransitionName] = useState<string | null>(null)
 
-  // Load datasets from backend on mount
+  const transitionTimerRef = useRef<number | null>(null)
+
+  const handleSendMessageRef = useRef<(c: string) => void>(() => {})
+
   useEffect(() => {
-    const loadDatasets = async () => {
+    return () => {
+      if (transitionTimerRef.current) {
+        window.clearTimeout(transitionTimerRef.current)
+      }
+    }
+  }, [])
+
+  // Load projects: 优先数据库（用户关联），再合并 datasets + tasks
+  useEffect(() => {
+    const loadProjects = async () => {
       try {
-        const datasets = await ETMAgentAPI.getDatasets()
-        const projectsFromBackend: WorkspaceProject[] = datasets.map((ds: DatasetInfo) => ({
-          id: `proj-${ds.name}`,
-          name: ds.name,
-          rows: ds.size || ds.file_count || 0,
-          createdAt: "已上传",
-          status: "completed" as const,
-          datasetName: ds.name,
-        }))
-        setProjects(projectsFromBackend)
+        const [dbProjects, datasets, tasks] = await Promise.all([
+          ETMAgentAPI.getProjects(),
+          ETMAgentAPI.getDatasets(),
+          ETMAgentAPI.getTasks({ limit: 100 }).catch(() => []),
+        ])
+        const seen = new Set<string>()
+        const list: WorkspaceProject[] = []
+
+        // 预构建 dataset→task 映射：优先已完成的任务
+        const taskByDataset = new Map<string, { task_id: string; status: string; pipeline_status?: string }>()
+        for (const t of tasks) {
+          const ds = t.dataset || (t as any).dataset_name
+          if (!ds) continue
+          const existing = taskByDataset.get(ds)
+          if (!existing || (t.status === "completed" && existing.status !== "completed")) {
+            taskByDataset.set(ds, { task_id: t.task_id, status: t.status, pipeline_status: t.status === "completed" ? "completed" : t.status === "failed" ? "error" : "running" })
+          }
+        }
+
+        // 1. 数据库中的项目（用户关联，跨设备同步）
+        for (const p of dbProjects) {
+          const key = p.dataset_name || `db-${p.id}`
+          seen.add(key)
+          // 如果项目没有 task_id，尝试从任务列表中匹配
+          let effectiveTaskId = p.task_id ?? null
+          let effectivePipelineStatus = p.pipeline_status
+          if (!effectiveTaskId && p.dataset_name) {
+            const matched = taskByDataset.get(p.dataset_name)
+            if (matched) {
+              effectiveTaskId = matched.task_id
+              effectivePipelineStatus = effectivePipelineStatus || matched.pipeline_status
+            }
+          }
+          const derivedPipelineStatus = effectivePipelineStatus === "completed" ? "completed"
+            : effectivePipelineStatus === "error" ? "error"
+            : effectivePipelineStatus === "running" ? "running"
+            : (effectiveTaskId && effectivePipelineStatus !== "completed") ? "running"
+            : (p.status === "draft" || p.status === "uploading") ? "running"
+            : undefined
+          list.push({
+            id: `proj-db-${p.id}`,
+            name: p.name,
+            rows: 0,
+            createdAt: p.created_at ? "已保存" : "刚刚",
+            status: (derivedPipelineStatus === "completed" ? "completed" : "vectorizing") as const,
+            datasetName: p.dataset_name ?? undefined,
+            mode: (p.mode as any) ?? "zero_shot",
+            numTopics: p.num_topics ?? 20,
+            pipelineStatus: derivedPipelineStatus as any,
+            dbProjectId: p.id,
+            taskId: effectiveTaskId,
+          })
+        }
+
+        // 2. 数据集（未在 DB 中的）
+        for (const ds of datasets) {
+          if (seen.has(ds.name)) continue
+          seen.add(ds.name)
+          list.push({
+            id: `proj-${ds.name}`,
+            name: ds.name,
+            rows: ds.size ?? (ds as any).file_count ?? 0,
+            createdAt: "已上传",
+            status: "completed" as const,
+            datasetName: ds.name,
+          })
+        }
+
+        // 3. 任务中的数据集
+        for (const t of tasks) {
+          const ds = t.dataset || (t as any).dataset_name
+          if (ds && !seen.has(ds)) {
+            seen.add(ds)
+            list.push({
+              id: `proj-${ds}`,
+              name: ds,
+              rows: 0,
+              createdAt: "已分析",
+              status: (t.status === "completed" ? "completed" : "vectorizing") as const,
+              datasetName: ds,
+              pipelineStatus: t.status === "completed" ? "completed" : t.status === "failed" ? "error" : "running",
+              taskId: t.task_id || null,
+            })
+          }
+        }
+
+        setProjects(list)
       } catch (error) {
-        console.error("Failed to load datasets:", error)
+        console.error("Failed to load projects:", error)
       } finally {
         setIsLoading(false)
       }
     }
-    loadDatasets()
+    loadProjects()
   }, [])
 
-  // 刷新项目列表
+  // 刷新项目列表（与 load 相同逻辑，保留正在运行的项目）
   const refreshProjects = useCallback(async () => {
     setIsLoading(true)
     try {
-      const datasets = await ETMAgentAPI.getDatasets()
-      const projectsFromBackend: WorkspaceProject[] = datasets.map((ds: DatasetInfo) => ({
-        id: `proj-${ds.name}`,
-        name: ds.name,
-        rows: ds.size || ds.file_count || 0,
-        createdAt: "已上传",
-        status: "completed" as const,
-        datasetName: ds.name,
-      }))
-      // 合并已有项目（保留正在运行的pipeline项目）
+      const [dbProjects, datasets, tasks] = await Promise.all([
+        ETMAgentAPI.getProjects(),
+        ETMAgentAPI.getDatasets(),
+        ETMAgentAPI.getTasks({ limit: 100 }).catch(() => []),
+      ])
+      const seen = new Set<string>()
+      const list: WorkspaceProject[] = []
+
+      // 预构建 dataset→task 映射：优先已完成的任务
+      const taskByDataset = new Map<string, { task_id: string; status: string; pipeline_status?: string }>()
+      for (const t of tasks) {
+        const ds = t.dataset || (t as any).dataset_name
+        if (!ds) continue
+        const existing = taskByDataset.get(ds)
+        if (!existing || (t.status === "completed" && existing.status !== "completed")) {
+          taskByDataset.set(ds, { task_id: t.task_id, status: t.status, pipeline_status: t.status === "completed" ? "completed" : t.status === "failed" ? "error" : "running" })
+        }
+      }
+
+      for (const p of dbProjects) {
+        const key = p.dataset_name || `db-${p.id}`
+        seen.add(key)
+        // 如果项目没有 task_id，尝试从任务列表中匹配
+        let effectiveTaskId = p.task_id ?? null
+        let effectivePipelineStatus = p.pipeline_status
+        if (!effectiveTaskId && p.dataset_name) {
+          const matched = taskByDataset.get(p.dataset_name)
+          if (matched) {
+            effectiveTaskId = matched.task_id
+            effectivePipelineStatus = effectivePipelineStatus || matched.pipeline_status
+          }
+        }
+        const derivedPipelineStatus = effectivePipelineStatus === "completed" ? "completed"
+          : effectivePipelineStatus === "error" ? "error"
+          : effectivePipelineStatus === "running" ? "running"
+          : (effectiveTaskId && effectivePipelineStatus !== "completed") ? "running"
+          : (p.status === "draft" || p.status === "uploading") ? "running"
+          : undefined
+        list.push({
+          id: `proj-db-${p.id}`,
+          name: p.name,
+          rows: 0,
+          createdAt: p.created_at ? "已保存" : "刚刚",
+          status: (derivedPipelineStatus === "completed" ? "completed" : "vectorizing") as const,
+          datasetName: p.dataset_name ?? undefined,
+          mode: (p.mode as any) ?? "zero_shot",
+          numTopics: p.num_topics ?? 20,
+          pipelineStatus: derivedPipelineStatus as any,
+          dbProjectId: p.id,
+          taskId: effectiveTaskId,
+        })
+      }
+      for (const ds of datasets) {
+        if (seen.has(ds.name)) continue
+        seen.add(ds.name)
+        list.push({
+          id: `proj-${ds.name}`,
+          name: ds.name,
+          rows: ds.size ?? (ds as any).file_count ?? 0,
+          createdAt: "已上传",
+          status: "completed" as const,
+          datasetName: ds.name,
+        })
+      }
+      for (const t of tasks) {
+        const ds = t.dataset || (t as any).dataset_name
+        if (ds && !seen.has(ds)) {
+          seen.add(ds)
+          list.push({
+            id: `proj-${ds}`,
+            name: ds,
+            rows: 0,
+            createdAt: "已分析",
+            status: (t.status === "completed" ? "completed" : "vectorizing") as const,
+            datasetName: ds,
+            pipelineStatus: t.status === "completed" ? "completed" : t.status === "failed" ? "error" : "running",
+            taskId: t.task_id || null,
+          })
+        }
+      }
       setProjects(prev => {
-        const runningProjects = prev.filter(p => p.pipelineStatus === "running")
-        const newProjects = projectsFromBackend.filter(np => 
-          !runningProjects.find(rp => rp.id === np.id)
+        // 构建 dbProjectId → 旧项目 ID 的映射，用于迁移 temp ID
+        const oldIdByDbId = new Map<number, string>()
+        for (const p of prev) {
+          if (p.dbProjectId) oldIdByDbId.set(p.dbProjectId, p.id)
+        }
+
+        // 迁移：如果旧列表中有 temp ID（如 new-xxx）指向同一个 dbProjectId，迁移 tab
+        for (const np of list) {
+          if (np.dbProjectId && oldIdByDbId.has(np.dbProjectId)) {
+            const oldId = oldIdByDbId.get(np.dbProjectId)!
+            if (oldId !== np.id) {
+              setTabs(t => t.map(tab => tab.id === oldId ? { ...tab, id: np.id } : tab))
+              setActiveTabId(a => a === oldId ? np.id : a)
+            }
+          }
+        }
+
+        // 保留正在运行的项目，但用新 ID 替换旧 temp ID
+        const runningProjects = prev
+          .filter(p => p.pipelineStatus === "running")
+          .map(rp => {
+            if (rp.dbProjectId) {
+              const newVersion = list.find(np => np.dbProjectId === rp.dbProjectId)
+              if (newVersion) return { ...rp, id: newVersion.id }
+            }
+            return rp
+          })
+        const runningIds = new Set(runningProjects.map(p => p.id))
+        const runningDbIds = new Set(runningProjects.filter(p => p.dbProjectId).map(p => p.dbProjectId))
+        const newProjects = list.filter(np =>
+          !runningIds.has(np.id) && !(np.dbProjectId && runningDbIds.has(np.dbProjectId))
         )
         return [...runningProjects, ...newProjects]
       })
     } catch (error) {
-      console.error("Failed to refresh datasets:", error)
+      console.error("Failed to refresh projects:", error)
     } finally {
       setIsLoading(false)
     }
@@ -108,13 +313,12 @@ function DashboardContent() {
     }
   }
 
-  // 创建新项目（仅项目名；分析模式、主题数在数据预处理后再配置，此处用默认值）
-  const handleCreateProject = useCallback((data: NewProjectData) => {
-    const projectId = `proj-${Date.now()}`
+  // 创建新项目：保存到数据库（需登录），并打开工作台
+  const handleCreateProject = useCallback(async (data: NewProjectData) => {
     const datasetName = data.name.trim().replace(/\s+/g, "_").replace(/[^\w\u4e00-\u9fa5-]/g, "").toLowerCase() || "dataset"
-
-    const newProject: WorkspaceProject = {
-      id: projectId,
+    const tempProjectId = `new-${Date.now()}`
+    const optimisticProject: WorkspaceProject = {
+      id: tempProjectId,
       name: data.name,
       datasetName,
       mode: "zero_shot",
@@ -125,30 +329,68 @@ function DashboardContent() {
       pipelineStatus: "running",
     }
 
-    setProjects(prev => [newProject, ...prev])
+    setProjects(prev => [optimisticProject, ...prev])
+    setTabs(prev => [...prev, { id: tempProjectId, title: data.name, closable: true }])
+    setActiveTabId(tempProjectId)
+    setProjectTransitionName(data.name)
 
-    const newTab: Tab = {
-      id: projectId,
-      title: data.name,
-      closable: true,
+    if (transitionTimerRef.current) {
+      window.clearTimeout(transitionTimerRef.current)
     }
-    setTabs(prev => [...prev, newTab])
-    setActiveTabId(projectId)
-    setIsNewProjectDialogOpen(false)
+    transitionTimerRef.current = window.setTimeout(() => {
+      setProjectTransitionName(null)
+      transitionTimerRef.current = null
+    }, 900)
+
+    try {
+      const created = await ETMAgentAPI.createProject({
+        name: data.name,
+        dataset_name: datasetName,
+        mode: "zero_shot",
+        num_topics: 20,
+      })
+
+      setProjects(prev => prev.map(p => {
+        if (p.id !== tempProjectId) return p
+        return {
+          ...p,
+          name: created.name,
+          datasetName: created.dataset_name ?? datasetName,
+          mode: (created.mode as any) ?? "zero_shot",
+          numTopics: created.num_topics ?? 20,
+          dbProjectId: created.id,
+        }
+      }))
+    } catch {
+      // 未登录或 API 不可用时，继续使用本地项目
+    }
   }, [])
 
-  // Pipeline 完成回调（可拿到 result.dataset 更新项目）
-  const handlePipelineComplete = useCallback((projectId: string, result?: { dataset?: string } | null) => {
-    setProjects(prev => prev.map(p =>
-      p.id === projectId
-        ? {
-            ...p,
-            status: "completed" as const,
-            pipelineStatus: "completed",
-            ...(result?.dataset && { datasetName: result.dataset }),
-          }
-        : p
-    ))
+  // Pipeline 完成回调：更新本地状态，并同步到数据库（若有 dbProjectId）
+  const handlePipelineComplete = useCallback(async (
+    projectId: string,
+    result?: { dataset?: string; taskId?: string } | null,
+    dbProjectId?: number,
+  ) => {
+    const updates = {
+      status: "completed" as const,
+      pipelineStatus: "completed" as const,
+      ...(result?.dataset && { datasetName: result.dataset }),
+    }
+    setProjects(prev => prev.map(p => (p.id === projectId ? { ...p, ...updates } : p)))
+
+    if (dbProjectId && result) {
+      try {
+        await ETMAgentAPI.updateProject(dbProjectId, {
+          dataset_name: result.dataset,
+          status: "completed",
+          pipeline_status: "completed",
+          task_id: result.taskId,
+        })
+      } catch {
+        // 忽略同步失败
+      }
+    }
     refreshProjects()
   }, [refreshProjects])
 
@@ -174,22 +416,30 @@ function DashboardContent() {
     }
   }
 
-  // 删除项目：后端有对应数据集则调用删除接口，并关闭该项目的标签页
+  // 删除项目：数据库记录 + 可选删除数据集文件
   const handleDeleteProject = useCallback(async (projectId: string) => {
     const project = projects.find((p) => p.id === projectId)
     if (!project) return
 
-    const datasetName = project.datasetName || (projectId.startsWith("proj-") ? projectId.replace(/^proj-/, "") : null)
+    // 数据库项目：删除 DB 记录
+    if (project.dbProjectId) {
+      try {
+        await ETMAgentAPI.deleteProject(project.dbProjectId)
+      } catch (error) {
+        console.error("删除项目记录失败:", error)
+        return
+      }
+    }
+
+    const datasetName = project.datasetName || (projectId.startsWith("proj-") && !projectId.startsWith("proj-db-") ? projectId.replace(/^proj-/, "") : null)
     if (datasetName) {
       try {
         await ETMAgentAPI.deleteDataset(datasetName)
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error)
-        if (msg.includes("404") || msg.includes("not found")) {
-          // 后端无此数据集（例如仅前端新建未上传），仍从本地移除
-        } else {
+        if (!msg.includes("404") && !msg.includes("not found")) {
           console.error("删除数据集失败:", error)
-          return
+          if (!project.dbProjectId) return
         }
       }
     }
@@ -202,7 +452,36 @@ function DashboardContent() {
     }
   }, [projects, tabs, activeTabId])
 
-  // Chat handlers
+  // 批量删除：并发执行，部分失败不阻断其他项目
+  const handleBatchDelete = useCallback(async (projectIds: string[]) => {
+    const results = await Promise.allSettled(
+      projectIds.map(async (projectId) => {
+        const project = projects.find((p) => p.id === projectId)
+        if (!project) return
+        if (project.dbProjectId) {
+          await ETMAgentAPI.deleteProject(project.dbProjectId)
+        }
+        const datasetName = project.datasetName || (projectId.startsWith("proj-") && !projectId.startsWith("proj-db-") ? projectId.replace(/^proj-/, "") : null)
+        if (datasetName) {
+          try {
+            await ETMAgentAPI.deleteDataset(datasetName)
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error)
+            if (!msg.includes("404") && !msg.includes("not found")) throw error
+          }
+        }
+      })
+    )
+    const deletedIds = new Set(
+      projectIds.filter((_, i) => results[i].status === "fulfilled")
+    )
+    if (deletedIds.size === 0) return
+    setProjects((prev) => prev.filter((p) => !deletedIds.has(p.id)))
+    setTabs((prev) => prev.filter((t) => !deletedIds.has(t.id)))
+    if (deletedIds.has(activeTabId)) setActiveTabId("hub")
+  }, [projects, activeTabId])
+
+  // Chat handlers — 使用 SSE 流式对话，fallback 到普通请求
   const handleSendMessage = useCallback(async (content: string) => {
     const userMessage: ChatMessage = {
       id: generateId(),
@@ -213,38 +492,97 @@ function DashboardContent() {
     }
     setChatHistory((prev) => [...prev, userMessage])
 
-    try {
-      const response = await ETMAgentAPI.chat(content, {
-        current_view_name: "项目中心",
-        current_view: activeTabId === "hub" ? "hub" : "workspace",
-        app_state: "workspace",
-        datasets_count: projects.length,
-        datasets: projects.map((p) => ({ name: p.name, fileCount: p.rows })),
-        processing_jobs_count: 0,
-        selected_dataset: activeTabId !== "hub" ? projects.find((p) => p.id === activeTabId)?.name : undefined,
-      })
+    const aiMsgId = generateId()
 
-      const text = response.message ?? (response as { response?: string }).response ?? ""
-      const aiMessage: ChatMessage = {
-        id: generateId(),
-        role: "ai",
-        content: text,
-        type: "text",
-        timestamp: getTimestamp(),
+    // 先添加一条空的 AI 消息，后续流式追加内容
+    setChatHistory((prev) => [
+      ...prev,
+      { id: aiMsgId, role: "ai", content: "", type: "text", timestamp: getTimestamp() },
+    ])
+
+    try {
+      let fullText = ""
+      let streamed = false
+
+      // 尝试 SSE 流式对话
+      try {
+        for await (const chunk of ETMAgentAPI.chatStream(content)) {
+          streamed = true
+          if (chunk.type === "text" && chunk.content) {
+            fullText = chunk.content
+            setChatHistory((prev) =>
+              prev.map((m) => (m.id === aiMsgId ? { ...m, content: fullText } : m))
+            )
+          }
+        }
+      } catch {
+        // SSE 不可用，fallback 到普通对话
+        if (!streamed) {
+          const response = await ETMAgentAPI.chat(content, {
+            current_view_name: "项目中心",
+            current_view: activeTabId === "hub" ? "hub" : "workspace",
+            app_state: "workspace",
+            session_id: "dashboard",
+          })
+          fullText = response.message ?? (response as { response?: string }).response ?? "（无回复）"
+        }
       }
-      setChatHistory((prev) => [...prev, aiMessage])
+
+      if (fullText) {
+        setChatHistory((prev) =>
+          prev.map((m) => (m.id === aiMsgId ? { ...m, content: fullText } : m))
+        )
+      }
     } catch (error) {
-      const aiMessage: ChatMessage = {
-        id: generateId(),
-        role: "ai",
-        content: `无法连接服务或请求失败。请确认后端已启动。`,
-        type: "text",
-        timestamp: getTimestamp(),
-        followUpQuestions: ["如何开始？", "支持哪些格式？"],
-      }
-      setChatHistory((prev) => [...prev, aiMessage])
+      setChatHistory((prev) =>
+        prev.map((m) =>
+          m.id === aiMsgId
+            ? {
+                ...m,
+                content: "无法连接 AI 服务，请确认后端已启动。",
+                followUpQuestions: ["如何开始？", "支持哪些格式？"],
+              }
+            : m
+        )
+      )
     }
-  }, [projects, activeTabId])
+  }, [activeTabId])
+
+  handleSendMessageRef.current = handleSendMessage
+
+  // 当查看已完成项目时，拉取 interpret API 生成动态建议
+  useEffect(() => {
+    const project = projects.find(p => p.id === activeTabId)
+    if (!project || project.pipelineStatus !== "completed" || !project.datasetName) {
+      setDynamicSuggestions([])
+      return
+    }
+    const jobId = project.datasetName
+    const send = (q: string) => handleSendMessageRef.current(q)
+    const fallbacks: SuggestionCard[] = [
+      { title: "指标解读", description: "分析当前评估指标质量", onClick: () => send("请解读评估指标。") },
+      { title: "主题解读", description: "各主题语义描述", onClick: () => send("请解读各主题含义。") },
+      { title: "分析报告", description: "整体分析摘要", onClick: () => send("请生成分析报告。") },
+    ]
+    Promise.allSettled([
+      ETMAgentAPI.interpretMetrics(jobId, "zh").catch(() => null),
+      ETMAgentAPI.interpretTopics(jobId, "zh", true).catch(() => null),
+      ETMAgentAPI.generateSummary(jobId, "zh").catch(() => null),
+    ]).then(([m, t, s]) => {
+      const cards: SuggestionCard[] = [
+        m.status === "fulfilled" && (m.value as any)?.summary
+          ? { title: "指标解读", description: String((m.value as any).summary).slice(0, 55) + "...", onClick: () => send("请解读评估指标。") }
+          : fallbacks[0],
+        t.status === "fulfilled" && (t.value as any)?.summary
+          ? { title: "主题解读", description: String((t.value as any).summary).slice(0, 55) + "...", onClick: () => send("请解读各主题含义。") }
+          : fallbacks[1],
+        s.status === "fulfilled" && (s.value as any)?.summary
+          ? { title: "分析报告", description: String((s.value as any).summary).slice(0, 55) + "...", onClick: () => send("请生成分析报告。") }
+          : fallbacks[2],
+      ]
+      setDynamicSuggestions(cards)
+    }).catch(() => setDynamicSuggestions(fallbacks))
+  }, [activeTabId, projects])
 
   const handleDataUploaded = useCallback(async (file: File) => {
     console.log("Data uploaded:", file.name)
@@ -266,6 +604,7 @@ function DashboardContent() {
           onProjectSelect={handleOpenProject} 
           onNewProject={() => setIsNewProjectDialogOpen(true)}
           onDeleteProject={handleDeleteProject}
+          onBatchDelete={handleBatchDelete}
           projects={projects}
           isLoading={isLoading}
         />
@@ -284,15 +623,42 @@ function DashboardContent() {
       )
     }
 
-    // 新建项目：先上传数据，再自动执行流程。出错时也留在本页以便重试
+    // 新建项目 / 运行中 / 有关联任务：先上传数据，再自动执行流程。出错时也留在本页以便重试
     if (currentProject.pipelineStatus === "running" || currentProject.pipelineStatus === "error") {
       return (
         <AutoPipeline
           projectName={currentProject.name}
           mode={currentProject.mode || "zero_shot"}
           numTopics={currentProject.numTopics || 20}
-          onComplete={(result) => handlePipelineComplete(currentProject.id, result)}
+          initialTaskId={currentProject.taskId}
+          onComplete={(result) => handlePipelineComplete(currentProject.id, result, currentProject.dbProjectId)}
           onError={() => handlePipelineError(currentProject.id)}
+          onTaskCreated={async (tid) => {
+            setProjects(prev => prev.map(p =>
+              p.id === currentProject.id ? { ...p, taskId: tid } : p
+            ))
+            if (currentProject.dbProjectId) {
+              try {
+                await ETMAgentAPI.updateProject(currentProject.dbProjectId, {
+                  task_id: tid,
+                  pipeline_status: "running",
+                })
+              } catch { /* skip */ }
+            }
+          }}
+          onUploadComplete={async (datasetName) => {
+            if (currentProject.dbProjectId) {
+              try {
+                await ETMAgentAPI.updateProject(currentProject.dbProjectId, {
+                  dataset_name: datasetName,
+                  status: "uploading",
+                })
+                setProjects(prev => prev.map(p =>
+                  p.id === currentProject.id ? { ...p, datasetName } : p
+                ))
+              } catch { /* skip */ }
+            }
+          }}
         />
       )
     }
@@ -315,8 +681,29 @@ function DashboardContent() {
         onDataUploaded={handleDataUploaded}
         onFocusChart={handleFocusChart}
         onClearChat={handleClearChat}
+        dynamicSuggestions={dynamicSuggestions}
       >
-        {renderContent()}
+        <div className="relative min-h-[360px]">
+          <div
+            className={`transition-all duration-500 ${projectTransitionName ? "opacity-70 scale-[0.995]" : "opacity-100 scale-100"}`}
+          >
+            {renderContent()}
+          </div>
+
+          {projectTransitionName && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+              <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="h-5 w-5 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">正在创建项目</p>
+                    <p className="text-xs text-slate-500">{projectTransitionName} 初始化中，请稍候...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </AppShell>
       
       <NewProjectDialog
@@ -328,120 +715,55 @@ function DashboardContent() {
   )
 }
 
-// 项目结果视图
+
+// 项目结果视图 — 使用统一结果 Tab 组件
 function ProjectResultView({ project }: { project: WorkspaceProject }) {
-  const [metrics, setMetrics] = useState<Record<string, number> | null>(null)
-  const [topicWords, setTopicWords] = useState<Record<string, string[]> | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const loadResults = async () => {
-      if (!project.datasetName) {
-        setLoading(false)
-        return
-      }
-
-      try {
-        const [metricsData, wordsData] = await Promise.all([
-          ETMAgentAPI.getMetrics(project.datasetName, project.mode || "zero_shot").catch(() => null),
-          ETMAgentAPI.getTopicWords(project.datasetName, project.mode || "zero_shot").catch(() => null),
-        ])
-        setMetrics(metricsData as Record<string, number> | null)
-        setTopicWords(wordsData)
-      } catch (error) {
-        console.error("Failed to load results:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadResults()
-  }, [project.datasetName, project.mode])
-
-  if (loading) {
-    return (
-      <div className="p-8 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-500">加载结果中...</p>
-        </div>
-      </div>
-    )
-  }
+  const dataset = project.datasetName || project.name
+  const mode    = project.mode || "zero_shot"
+  const [activeResultTab, setActiveResultTab] = useState("overview")
 
   return (
     <div className="p-6 lg:p-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">{project.name}</h1>
-        <p className="text-slate-500">
-          数据集: {project.datasetName || project.name} · 
-          模式: {project.mode || "zero_shot"} · 
-          主题数: {project.numTopics || 20}
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">{project.name}</h1>
+        <p className="text-slate-500 text-sm">
+          数据集: {dataset} · 模式: {mode} · 主题数: {project.numTopics || 20}
         </p>
       </div>
 
-      {/* 评估指标 */}
-      {metrics && Object.keys(metrics).length > 0 && (
-        <div className="mb-6">
-          <h3 className="font-semibold text-slate-900 mb-3">评估指标</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Object.entries(metrics).filter(([_, v]) => typeof v === "number").slice(0, 8).map(([key, value]) => (
-              <div key={key} className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
-                <p className="text-xs text-blue-600 uppercase mb-1">{key}</p>
-                <p className="text-2xl font-bold text-blue-700">
-                  {typeof value === "number" ? value.toFixed(4) : value}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <Tabs value={activeResultTab} onValueChange={setActiveResultTab}>
+        <TabsList>
+          <TabsTrigger value="overview">概览</TabsTrigger>
+          <TabsTrigger value="topics">主题词</TabsTrigger>
+          <TabsTrigger value="metrics">评估指标</TabsTrigger>
+          <TabsTrigger value="viz">可视化</TabsTrigger>
+          <TabsTrigger value="export">导出</TabsTrigger>
+        </TabsList>
 
-      {/* 主题词 */}
-      {topicWords && Object.keys(topicWords).length > 0 && (
-        <div>
-          <h3 className="font-semibold text-slate-900 mb-3">主题分析结果</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.entries(topicWords).map(([topicId, words]) => (
-              <div key={topicId} className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <p className="text-sm font-semibold text-slate-700 mb-2">
-                  主题 {parseInt(topicId) + 1}
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {(words as string[]).slice(0, 8).map((word, idx) => (
-                    <span
-                      key={idx}
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        idx < 3
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {word}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        <TabsContent value="overview" className="mt-4">
+          <OverviewTab dataset={dataset} mode={mode} />
+        </TabsContent>
 
-      {/* 空状态 */}
-      {(!metrics || Object.keys(metrics).length === 0) && (!topicWords || Object.keys(topicWords).length === 0) && (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-          <p className="text-slate-500">暂无分析结果</p>
-          <p className="text-sm text-slate-400 mt-1">该项目可能尚未完成训练</p>
-        </div>
-      )}
+        <TabsContent value="topics" className="mt-4">
+          <TopicWordsTab dataset={dataset} mode={mode} shouldLoad={activeResultTab === "topics"} />
+        </TabsContent>
+
+        <TabsContent value="metrics" className="mt-4">
+          <MetricsTab dataset={dataset} mode={mode} shouldLoad={activeResultTab === "metrics"} />
+        </TabsContent>
+
+        <TabsContent value="viz" className="mt-4">
+          <VisualizationTab dataset={dataset} mode={mode} shouldLoad={activeResultTab === "viz"} />
+        </TabsContent>
+
+        <TabsContent value="export" className="mt-4">
+          <ExportTab dataset={dataset} mode={mode} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
+
 
 // Dashboard page with auth protection
 export default function DashboardPage() {

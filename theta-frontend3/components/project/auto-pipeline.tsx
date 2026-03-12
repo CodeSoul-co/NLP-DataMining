@@ -27,6 +27,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 import { ETMAgentAPI } from "@/lib/api/etm-agent"
+import { AnalysisConfigPanel, type AnalysisConfig } from "./analysis-config-panel"
+import { ColumnSelectPanel, type ColumnSelection } from "./column-select-panel"
 
 // ==================== 类型定义 ====================
 
@@ -50,10 +52,18 @@ const PREPROCESSING_RUNNING_STATUSES = [
 
 interface AutoPipelineProps {
   projectName: string
-  mode: "zero_shot" | "unsupervised" | "supervised"
-  numTopics: number
+  /** 默认模式（用户未配置时使用，上传后会弹配置面板让用户选择） */
+  mode?: "zero_shot" | "unsupervised" | "supervised"
+  /** 默认主题数 */
+  numTopics?: number
+  /** 已有的 task_id，用于项目重新进入时恢复进度 */
+  initialTaskId?: string | null
   onComplete?: (result: PipelineResult) => void
   onError?: (error: string) => void
+  /** 上传完成时回调（dataset_name 来自后端），用于同步到数据库 */
+  onUploadComplete?: (datasetName: string) => void
+  /** 训练任务创建后回调，用于将 task_id 保存到项目数据库 */
+  onTaskCreated?: (taskId: string) => void
 }
 
 interface PipelineStep {
@@ -99,17 +109,20 @@ function formatDuration(ms: number): string {
 
 export function AutoPipeline({
   projectName,
-  mode,
-  numTopics,
+  mode: defaultMode = "zero_shot",
+  numTopics: defaultNumTopics = 20,
+  initialTaskId,
   onComplete,
   onError,
+  onUploadComplete,
+  onTaskCreated,
 }: AutoPipelineProps) {
   /** 初始用项目名生成；上传成功后改用后端返回的 dataset_name，避免前后端 sanitize 不一致 */
   const [effectiveDatasetName, setEffectiveDatasetName] = useState<string>(() => getDatasetName(projectName))
 
   const [steps, setSteps] = useState<PipelineStep[]>(createInitialSteps())
   const [overallProgress, setOverallProgress] = useState(0)
-  const [status, setStatus] = useState<"upload" | "running" | "completed" | "error">("upload")
+  const [status, setStatus] = useState<"upload" | "column_select" | "config" | "running" | "completed" | "error">("upload")
   const [taskId, setTaskId] = useState<string | null>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [logs, setLogs] = useState<string[]>([])
@@ -119,12 +132,99 @@ export function AutoPipeline({
   const [uploadProgress, setUploadProgress] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [uploadJobId, setUploadJobId] = useState<string | null>(null)
+  /** 上传完成后等待配置：弹出配置面板，用户确认后才开始分析 */
+  const [showConfigPanel, setShowConfigPanel] = useState(false)
+  const [pendingDatasetForConfig, setPendingDatasetForConfig] = useState<string | null>(null)
+  const [pendingJobIdForConfig, setPendingJobIdForConfig] = useState<string | null>(null)
+  /** CSV 上传后先选列：弹出列选择面板 */
+  const [showColumnSelectPanel, setShowColumnSelectPanel] = useState(false)
+  const [columnSelection, setColumnSelection] = useState<ColumnSelection | null>(null)
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const hasUploaded = useRef(false)
   const pipelineStarted = useRef(false)
   /** 当前流程使用的数据集名（上传后由后端返回），用于结果展示 */
   const pipelineDatasetRef = useRef<string>("")
+
+  /** 恢复已有任务：项目重新进入时，根据 initialTaskId 查询任务状态并恢复进度 */
+  useEffect(() => {
+    if (!initialTaskId) return
+    let cancelled = false
+
+    const restoreTask = async () => {
+      try {
+        const task = await ETMAgentAPI.getTask(initialTaskId)
+        if (cancelled) return
+
+        setTaskId(initialTaskId)
+        pipelineStarted.current = true
+        hasUploaded.current = true
+
+        if (task.dataset) {
+          setEffectiveDatasetName(task.dataset)
+          pipelineDatasetRef.current = task.dataset
+        }
+
+        // 标记上传已完成
+        updateStep("upload", { status: "completed", progress: 100, message: "上传完成" })
+
+        if (task.status === "completed") {
+          setStatus("completed")
+          setOverallProgress(100)
+          setSteps(prev => prev.map(s => ({ ...s, status: "completed" as const, progress: 100, message: "已完成" })))
+          const pipelineResult: PipelineResult = {
+            success: true,
+            taskId: initialTaskId,
+            dataset: task.dataset,
+            metrics: task.metrics,
+            topicWords: task.topic_words,
+            duration: 0,
+          }
+          setResult(pipelineResult)
+          addLog("✅ 训练已完成")
+          return
+        }
+
+        if (task.status === "failed" || task.status === "error") {
+          setStatus("error")
+          addLog(`❌ ${task.error_message || "训练失败"}`)
+          updateStep("training", { status: "error", message: task.error_message || "失败" })
+          return
+        }
+
+        // 运行中 → 恢复轮询
+        setStatus("running")
+        setStartTime(task.created_at ? new Date(task.created_at) : new Date())
+        setOverallProgress(task.progress || 0)
+        const isDlc = task.current_step === "dlc_training"
+        if (isDlc) {
+          updateStep("training", {
+            status: "running",
+            progress: task.progress || 0,
+            message: task.message || "云端训练中...",
+          })
+        }
+        addLog(`恢复任务进度: ${task.message || task.status}`)
+
+        pollingRef.current = setInterval(() => pollTaskStatus(initialTaskId), 2000)
+      } catch (err) {
+        console.error("Failed to restore task:", err)
+        // 任务不存在，回退到上传界面
+      }
+    }
+
+    restoreTask()
+
+    return () => {
+      cancelled = true
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTaskId])
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString("zh-CN")
@@ -151,19 +251,33 @@ export function AutoPipeline({
     setSelectedFiles(prev => prev.filter((_, i) => i !== index))
   }
 
-  const startPipelineAfterUpload = useCallback(async (datasetForPipeline: string) => {
-    if (pipelineStarted.current) return
-    pipelineStarted.current = true
-    pipelineDatasetRef.current = datasetForPipeline
+  const startPipelineAfterUpload = useCallback(
+    async (
+      datasetForPipeline: string,
+      jobId?: string,
+      config?: AnalysisConfig,
+      colSel?: ColumnSelection | null
+    ) => {
+      if (pipelineStarted.current) return
+      pipelineStarted.current = true
+      pipelineDatasetRef.current = datasetForPipeline
 
-    setStatus("running")
-    setStartTime(new Date())
-    updateStep("upload", { status: "completed", progress: 100, message: "上传完成" })
-    addLog(`数据集: ${datasetForPipeline}, 模式: ${mode}, 主题数: ${numTopics}`)
+      const mode = config?.mode ?? defaultMode
+      const numTopics = config?.numTopics ?? defaultNumTopics
+
+      setStatus("running")
+      setStartTime(new Date())
+      updateStep("upload", { status: "completed", progress: 100, message: "上传完成" })
+      addLog(`数据集: ${datasetForPipeline}, 模式: ${mode}, 主题数: ${numTopics}`)
 
     updateStep("preprocess", { status: "running", progress: 10, message: "检查数据...", startTime: new Date() })
 
     try {
+      // theta_1 流程：若有 job_id，先将上传文件落到 dataset 目录，否则预处理找不到 CSV
+      if (jobId) {
+        addLog("准备数据集...")
+        await ETMAgentAPI.prepareDataset(jobId, datasetForPipeline)
+      }
       addLog("检查预处理状态...")
       const preprocessStatus = await ETMAgentAPI.checkPreprocessingStatus(datasetForPipeline)
 
@@ -173,7 +287,14 @@ export function AutoPipeline({
 
         let preprocessJob
         try {
-          preprocessJob = await ETMAgentAPI.startPreprocessing({ dataset: datasetForPipeline })
+          const sel = colSel ?? columnSelection
+          const prepConfig: Record<string, unknown> = config ? { language: config.language } : {}
+          if (sel?.textColumn) prepConfig.text_column = sel.textColumn
+          preprocessJob = await ETMAgentAPI.startPreprocessing({
+            dataset: datasetForPipeline,
+            text_column: sel?.textColumn,
+            config: Object.keys(prepConfig).length ? prepConfig : undefined,
+          })
         } catch (preprocessError) {
           const msg = preprocessError instanceof Error ? preprocessError.message : String(preprocessError)
           if (msg.includes("No CSV files found")) {
@@ -215,9 +336,16 @@ export function AutoPipeline({
         dataset: datasetForPipeline,
         mode,
         num_topics: numTopics,
+        vocab_size: config?.vocabSize,
+        epochs: config?.epochs,
+        batch_size: config?.batchSize,
+        model_size: config?.modelSize,
+        models: config?.models && config.models.length > 0 ? config.models.join(",") : undefined,
+        job_id: jobId || uploadJobId || undefined,
       })
       setTaskId(task.task_id)
       addLog(`训练任务: ${task.task_id}`)
+      onTaskCreated?.(task.task_id)
 
       pollingRef.current = setInterval(() => pollTaskStatus(task.task_id), 2000)
     } catch (error) {
@@ -230,12 +358,32 @@ export function AutoPipeline({
       )
       onError?.(errorMessage)
     }
-  }, [mode, numTopics, addLog, updateStep, onError])
+  },
+  [defaultMode, defaultNumTopics, columnSelection, addLog, updateStep, onError]
+)
+
+  /** 从 message 中解析进度，如 "Epoch 5/10" -> 50 */
+  const parseProgressFromMessage = (message: string): number | null => {
+    const epochMatch = message.match(/Epoch\s+(\d+)\s*\/\s*(\d+)/i)
+    if (epochMatch) {
+      const x = parseInt(epochMatch[1], 10)
+      const y = parseInt(epochMatch[2], 10)
+      if (y > 0) return Math.min(100, Math.round((x / y) * 100))
+    }
+    const pctMatch = message.match(/\(?\s*(\d+)\s*%\)?/)
+    if (pctMatch) return Math.min(100, parseInt(pctMatch[1], 10))
+    return null
+  }
 
   const pollTaskStatus = useCallback(
     async (tid: string) => {
       try {
-        const task = await ETMAgentAPI.getTask(tid)
+        const [task, logsData] = await Promise.all([
+          ETMAgentAPI.getTask(tid),
+          ETMAgentAPI.getTaskLogs(tid, 100),
+        ])
+        const logs = logsData?.logs ?? []
+
         const stepMap: Record<string, string> = {
           preprocess: "preprocess",
           preprocessing: "preprocess",
@@ -247,28 +395,96 @@ export function AutoPipeline({
           visualization: "visualization",
           visualizing: "visualization",
         }
-        const currentStepId = task.current_step ? stepMap[task.current_step.toLowerCase()] : null
+
+        /** 每步骤只看自己的日志，独立计算进度；仅本步骤 completed 才打勾 */
+        const stepStatusFromLogs: Record<string, { status: "running" | "completed"; progress: number; message: string }> = {}
+        const stepOrder = ["preprocess", "embedding", "training", "evaluation", "visualization"]
+        for (const stepId of stepOrder) {
+          const stepLogs = logs.filter(
+            (l: { step?: string }) => stepMap[l.step || ""] === stepId || l.step === stepId
+          )
+          const lastLog = stepLogs[stepLogs.length - 1]
+          if (!lastLog) continue
+
+          const status = lastLog.status
+          const message = lastLog.message || ""
+          if (status === "completed" || status === "success") {
+            stepStatusFromLogs[stepId] = { status: "completed", progress: 100, message: "已完成" }
+          } else {
+            const progress = parseProgressFromMessage(message) ?? (stepId === "training" ? Math.min(task.progress, 100) : 0)
+            stepStatusFromLogs[stepId] = {
+              status: "running",
+              progress: Math.min(progress, 100),
+              message: message || "处理中...",
+            }
+          }
+        }
 
         setSteps(prev => {
           const newSteps = [...prev]
-          const currentIndex = currentStepId ? newSteps.findIndex(s => s.id === currentStepId) : -1
+          let anyRunning = false
+          let completedCount = 0
           newSteps.forEach((step, i) => {
             if (step.id === "upload") return
-            if (currentIndex >= 0 && i < currentIndex && step.status !== "completed") {
+            const logStatus = step.id !== "upload" ? stepStatusFromLogs[step.id] : null
+            const taskStepId = task.current_step ? stepMap[task.current_step.toLowerCase()] : null
+            const isCurrentByTask = step.id === taskStepId
+
+            if (logStatus?.status === "completed") {
               newSteps[i] = { ...step, status: "completed" as const, progress: 100, message: "已完成" }
-            } else if (step.id === currentStepId) {
+              completedCount++
+            } else if (logStatus || isCurrentByTask) {
               newSteps[i] = {
                 ...step,
                 status: "running",
-                progress: Math.min(task.progress, 100),
-                message: task.message || "处理中...",
+                progress: logStatus?.progress ?? (isCurrentByTask ? Math.min(task.progress, 100) : 0),
+                message: logStatus?.message ?? (isCurrentByTask ? (task.message || "处理中...") : step.message),
               }
+              anyRunning = true
             }
           })
           return newSteps
         })
-        setOverallProgress(Math.min(15 + Math.round(task.progress * 0.85), 100))
-        addLog(`${task.current_step || "处理中"}: ${task.message || ""} (${task.progress}%)`)
+
+        /** 总进度：DLC 模式直接用 task.progress，本地模式按日志步骤计算 */
+        const isDlcStep = task.current_step === 'dlc_training'
+        if (isDlcStep) {
+          setOverallProgress(Math.min(Math.round(task.progress || 0), 100))
+          // 更新 training step 的状态来反映 DLC 进度
+          setSteps(prev => {
+            const newSteps = [...prev]
+            const trainingIdx = newSteps.findIndex(s => s.id === 'training')
+            if (trainingIdx >= 0) {
+              newSteps[trainingIdx] = {
+                ...newSteps[trainingIdx],
+                status: task.status === 'completed' ? 'completed' as const : 'running' as const,
+                progress: Math.min(task.progress || 0, 100),
+                message: task.message || '云端训练中...',
+              }
+            }
+            return newSteps
+          })
+        } else {
+          const stepIds = ["preprocess", "embedding", "training", "evaluation", "visualization"]
+          let baseProgress = 0
+          let currentStepProgress = 0
+          for (let i = 0; i < stepIds.length; i++) {
+            const stat = stepStatusFromLogs[stepIds[i]]
+            if (stat?.status === "completed") {
+              baseProgress = ((i + 1) / stepIds.length) * 100
+            } else if (stat) {
+              currentStepProgress = (stat.progress / 100) * (100 / stepIds.length)
+              break
+            }
+          }
+          setOverallProgress(Math.min(Math.round(baseProgress + currentStepProgress), 100))
+        }
+        const stepLabel = isDlcStep
+          ? (task.dlc_status
+              ? `云端训练 [${task.dlc_status}]`
+              : '云端训练')
+          : (task.current_step || '处理中')
+        addLog(`${stepLabel}: ${task.message || ''} (${task.progress}%)`)
 
         if (task.status === "completed") {
           setStatus("completed")
@@ -327,11 +543,23 @@ export function AutoPipeline({
         updateStep("upload", { progress: p, message: `上传中 ${p}%` })
       })
       const backendDatasetName = uploadResult.dataset_name
+      const jobIdFromUpload = (uploadResult as any).job_id || null
       setEffectiveDatasetName(backendDatasetName)
-      addLog(`✅ 上传完成，后端数据集名: ${backendDatasetName}`)
-      addLog("等待文件落盘后启动分析...")
-      await new Promise(r => setTimeout(r, 1500))
-      await startPipelineAfterUpload(backendDatasetName)
+      if (jobIdFromUpload) setUploadJobId(jobIdFromUpload)
+      onUploadComplete?.(backendDatasetName)
+      addLog(`✅ 上传完成，后端数据集名: ${backendDatasetName}${jobIdFromUpload ? ` (job_id: ${jobIdFromUpload})` : ''}`)
+      setPendingDatasetForConfig(backendDatasetName)
+      setPendingJobIdForConfig(jobIdFromUpload)
+      const hasCsv = selectedFiles.some(f => f.name.toLowerCase().endsWith(".csv"))
+      if (hasCsv) {
+        addLog("检测到 CSV 文件，请选择文本列和清洗选项")
+        setStatus("column_select")
+        setShowColumnSelectPanel(true)
+      } else {
+        addLog("请配置分析参数后点击「开始分析」")
+        setStatus("config")
+        setShowConfigPanel(true)
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "上传失败"
       addLog(`❌ ${errorMessage}`)
@@ -356,7 +584,42 @@ export function AutoPipeline({
     setResult(null)
     setSelectedFiles([])
     setUploadProgress(0)
+    setUploadJobId(null)
+    setShowConfigPanel(false)
+    setShowColumnSelectPanel(false)
+    setPendingDatasetForConfig(null)
+    setPendingJobIdForConfig(null)
+    setColumnSelection(null)
   }
+
+  const handleColumnSelectConfirm = useCallback((selection: ColumnSelection) => {
+    setColumnSelection(selection)
+    setShowColumnSelectPanel(false)
+    addLog("列选择已确认，请配置分析参数")
+    setStatus("config")
+    setShowConfigPanel(true)
+  }, [addLog])
+
+  const handleColumnSelectSkip = useCallback(() => {
+    setShowColumnSelectPanel(false)
+    addLog("跳过列选择，请配置分析参数")
+    setStatus("config")
+    setShowConfigPanel(true)
+  }, [addLog])
+
+  const handleConfigConfirm = useCallback(
+    (config: AnalysisConfig) => {
+      const dataset = pendingDatasetForConfig || effectiveDatasetName
+      const jobId = pendingJobIdForConfig || uploadJobId
+      setShowConfigPanel(false)
+      setPendingDatasetForConfig(null)
+      setPendingJobIdForConfig(null)
+      if (dataset) {
+        startPipelineAfterUpload(dataset, jobId, config, columnSelection)
+      }
+    },
+    [pendingDatasetForConfig, pendingJobIdForConfig, effectiveDatasetName, uploadJobId, columnSelection, startPipelineAfterUpload]
+  )
 
   // ---------- 顶部紧凑步骤条（单行小标签）----------
   const renderStepPill = (step: PipelineStep, index: number) => {
@@ -411,12 +674,16 @@ export function AutoPipeline({
           <Badge
             className={cn(
               status === "upload" && "bg-amber-100 text-amber-700",
+              status === "column_select" && "bg-amber-100 text-amber-700",
+              status === "config" && "bg-violet-100 text-violet-700",
               status === "running" && "bg-blue-100 text-blue-700",
               status === "completed" && "bg-green-100 text-green-700",
               status === "error" && "bg-red-100 text-red-700"
             )}
           >
             {status === "upload" && "请上传数据"}
+            {status === "column_select" && "请选择列"}
+            {status === "config" && "请完成配置"}
             {status === "running" && "分析中..."}
             {status === "completed" && "已完成"}
             {status === "error" && "出错"}
@@ -424,8 +691,12 @@ export function AutoPipeline({
         </div>
         <p className="text-slate-500">
           {status === "upload"
-            ? "上传数据后将自动执行：预处理 → 参数选择 → 训练 → 评估 → 可视化"
-            : `数据集: ${effectiveDatasetName} · 模式: ${mode} · 主题数: ${numTopics}`}
+            ? "上传数据后弹出配置面板，配置完成后执行：预处理 → 参数选择 → 训练 → 评估 → 可视化"
+            : status === "column_select"
+            ? "请选择文本列和清洗选项，确认后进入分析配置"
+            : status === "config"
+            ? "请在下方的配置面板中选择模型和参数，点击「开始分析」"
+            : `数据集: ${effectiveDatasetName}`}
         </p>
       </div>
 
@@ -447,6 +718,38 @@ export function AutoPipeline({
       {/* 主内容区：上传 / 结果 / 错误 / 日志 */}
       <Card className="flex-1 flex flex-col min-h-0">
         <CardContent className="pt-6 flex-1 flex flex-col min-h-0 overflow-auto">
+            {/* 列选择/配置等待阶段 */}
+            {(status === "column_select" || status === "config") && (
+              <div className="space-y-4 mb-4">
+                <div className="p-4 bg-violet-50 rounded-xl border border-violet-100">
+                  <p className="font-medium text-violet-800">上传完成</p>
+                  <p className="text-sm text-violet-600 mt-1">
+                    {status === "column_select"
+                      ? "请在上方弹出的列选择面板中选择文本列和清洗选项。"
+                      : "请在上方弹出的配置面板中选择数据语言、模型和超参数，然后点击「开始分析」。"}
+                  </p>
+                  {status === "column_select" && !showColumnSelectPanel && (
+                    <Button
+                      onClick={() => setShowColumnSelectPanel(true)}
+                      variant="outline"
+                      className="mt-3 border-amber-200 text-amber-700 hover:bg-amber-100"
+                    >
+                      打开列选择面板
+                    </Button>
+                  )}
+                  {status === "config" && !showConfigPanel && (
+                    <Button
+                      onClick={() => setShowConfigPanel(true)}
+                      variant="outline"
+                      className="mt-3 border-violet-200 text-violet-700 hover:bg-violet-100"
+                    >
+                      打开配置面板
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* 上传阶段：显示上传区 */}
             {status === "upload" && (
               <div className="space-y-4 mb-4">
@@ -586,6 +889,22 @@ export function AutoPipeline({
             </Collapsible>
         </CardContent>
       </Card>
+
+      <ColumnSelectPanel
+        open={showColumnSelectPanel}
+        onOpenChange={setShowColumnSelectPanel}
+        onConfirm={handleColumnSelectConfirm}
+        onSkip={handleColumnSelectSkip}
+        datasetName={pendingDatasetForConfig || effectiveDatasetName}
+        jobId={pendingJobIdForConfig || uploadJobId}
+      />
+
+      <AnalysisConfigPanel
+        open={showConfigPanel}
+        onOpenChange={setShowConfigPanel}
+        onConfirm={handleConfigConfirm}
+        datasetName={pendingDatasetForConfig || effectiveDatasetName}
+      />
     </div>
   )
 }

@@ -18,6 +18,10 @@ import {
   Trash2,
   Mic,
   PanelRightClose,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Expand,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -25,9 +29,19 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { TypingMessage } from "@/components/typing-message"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { cn } from "@/lib/utils"
 
 // Message Types
 export type MessageType = "text" | "chart_widget" | "table_summary" | "file_upload"
+
+export interface ChartCitation {
+  ref: string
+  type: "chart"
+  url: string
+  caption: string
+  analysis?: string
+}
 
 export interface ChatMessage {
   id: string
@@ -42,6 +56,14 @@ export interface ChatMessage {
     tableSummary?: { rows: number; columns: number; preview: string[] }
   }
   followUpQuestions?: string[]
+  /** Agent 回复中的图表引用 */
+  citations?: ChartCitation[]
+}
+
+export interface SuggestionCard {
+  title: string
+  description: string
+  onClick: () => void
 }
 
 interface AiSidebarProps {
@@ -51,6 +73,8 @@ interface AiSidebarProps {
   onFocusChart?: (chartId: string) => void
   onClearChat?: () => void
   onCollapse?: () => void
+  /** 动态智能建议（训练完成后由 interpret API 生成） */
+  dynamicSuggestions?: SuggestionCard[]
 }
 
 // Mini Chart Component
@@ -136,7 +160,40 @@ function TableSummary({ data }: { data: { rows: number; columns: number; preview
   )
 }
 
-// Message Bubble Component - AI 文本消息支持打字机效果
+/** 渲染带 [图1][图2] 引用的文本，引用渲染为蓝色可点击角标 */
+function renderContentWithCitations(
+  content: string,
+  citations?: ChartCitation[],
+  onCitationClick?: (url: string) => void
+) {
+  if (!citations?.length) return <p>{content}</p>
+  const parts = content.split(/(\[图\d+\])/g)
+  return (
+    <p>
+      {parts.map((part, i) => {
+        const match = part.match(/\[图(\d+)\]/)
+        if (match) {
+          const idx = parseInt(match[1], 10) - 1
+          const cit = citations[idx]
+          if (cit) {
+            return (
+              <span
+                key={i}
+                className="text-blue-600 hover:text-blue-700 underline cursor-pointer font-medium"
+                onClick={() => onCitationClick?.(cit.url)}
+              >
+                {part}
+              </span>
+            )
+          }
+        }
+        return <span key={i}>{part}</span>
+      })}
+    </p>
+  )
+}
+
+// Message Bubble Component - AI 文本消息支持打字机效果与 citations
 function MessageBubble({ 
   message, 
   isLatestAiMessage,
@@ -148,8 +205,15 @@ function MessageBubble({
   onFocusChart?: (chartId: string) => void
   onFollowUpClick?: (question: string) => void
 }) {
+  const [expandedCitation, setExpandedCitation] = useState<string | null>(null)
+  const [citationsCollapsed, setCitationsCollapsed] = useState(false)
   const isUser = message.role === "user"
   const showTyping = !isUser && message.type === "text" && isLatestAiMessage && message.content.length > 0
+  const hasCitations = !isUser && message.citations && message.citations.length > 0
+  
+  const handleCitationClick = (url: string) => {
+    setExpandedCitation(prev => (prev === url ? null : url))
+  }
   
   return (
     <div className={`flex gap-2.5 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
@@ -164,11 +228,12 @@ function MessageBubble({
       
       <div className={`max-w-[85%] ${isUser ? "items-end" : "items-start"}`}>
         <div
-          className={`px-4 py-2.5 text-sm leading-relaxed ${
+          className={cn(
+            "px-4 py-2.5 text-sm leading-relaxed",
             isUser
               ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-2xl rounded-tr-md shadow-md"
               : "bg-white border border-slate-100 text-slate-700 rounded-2xl rounded-tl-md shadow-sm"
-          }`}
+          )}
         >
           {showTyping ? (
             <TypingMessage
@@ -177,6 +242,8 @@ function MessageBubble({
               className="text-slate-700"
               speed={12}
             />
+          ) : hasCitations ? (
+            renderContentWithCitations(message.content, message.citations, handleCitationClick)
           ) : (
             <p>{message.content}</p>
           )}
@@ -200,6 +267,62 @@ function MessageBubble({
             <TableSummary data={message.data.tableSummary} />
           )}
         </div>
+        
+        {/* Citation cards - 可折叠 */}
+        {hasCitations && (
+          <Collapsible open={!citationsCollapsed} onOpenChange={v => setCitationsCollapsed(!v)}>
+            <CollapsibleTrigger asChild>
+              <button className="flex items-center gap-1 mt-2 text-xs text-slate-500 hover:text-slate-700">
+                {citationsCollapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+                图表引用 ({message.citations!.length})
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-2 space-y-2">
+                {message.citations!.map((cit, i) => (
+                  <div
+                    key={i}
+                    className="p-3 bg-slate-50 rounded-xl border border-slate-100 overflow-hidden"
+                  >
+                    <p className="text-xs font-medium text-slate-700 mb-1">{cit.caption}</p>
+                    {cit.analysis && <p className="text-xs text-slate-500 mb-2">{cit.analysis}</p>}
+                    <div
+                      className="relative cursor-pointer rounded-lg overflow-hidden border border-slate-200"
+                      onClick={() => handleCitationClick(cit.url)}
+                    >
+                      <img
+                        src={cit.url}
+                        alt={cit.caption}
+                        className="w-full h-auto max-h-40 object-contain"
+                      />
+                      <span className="absolute top-1 right-1 p-1 bg-white/80 rounded">
+                        <Expand className="w-3 h-3" />
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+        
+        {/* 全屏查看图表 */}
+        {expandedCitation && (
+          <div
+            className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+            onClick={() => setExpandedCitation(null)}
+          >
+            <button className="absolute top-4 right-4 p-2 bg-white/20 rounded-full hover:bg-white/40">
+              <X className="w-5 h-5 text-white" />
+            </button>
+            <img
+              src={expandedCitation}
+              alt="查看图表"
+              className="max-w-full max-h-full object-contain"
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+        )}
         
         {/* Follow-up Questions */}
         {!isUser && message.followUpQuestions && message.followUpQuestions.length > 0 && (
@@ -232,6 +355,7 @@ export function AiSidebar({
   onFocusChart,
   onClearChat,
   onCollapse,
+  dynamicSuggestions,
 }: AiSidebarProps) {
   const [inputValue, setInputValue] = useState("")
   const [isDragOver, setIsDragOver] = useState(false)
@@ -431,40 +555,62 @@ export function AiSidebar({
         )}
       </ScrollArea>
 
-      {/* Smart Suggestions - compact */}
+      {/* Smart Suggestions - 动态或静态 */}
       {chatHistory.length === 0 && (
         <div className="flex-shrink-0 px-3 py-2.5 border-t border-slate-100/60 bg-gradient-to-b from-white via-white to-slate-50/50 min-w-0 w-full overflow-hidden">
           <div className="flex items-center gap-1.5 mb-2">
             <div className="h-5 w-5 rounded-md bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center">
               <Zap className="h-3 w-3 text-amber-600" />
             </div>
-            <span className="text-[10px] font-bold text-slate-500 tracking-wide uppercase">智能建议</span>
+            <span className="text-[10px] font-bold text-slate-500 tracking-wide uppercase">
+              {dynamicSuggestions?.length ? "分析建议" : "智能建议"}
+            </span>
           </div>
           <div className="space-y-1.5">
-            <button 
-              className="w-full flex items-center justify-between p-2.5 bg-white hover:bg-blue-50/80 border border-slate-200/60 hover:border-blue-200 rounded-lg transition-all duration-200 group shadow-sm"
-              onClick={() => onSendMessage("如何开始数据分析？")}
-            >
-              <div className="flex flex-col items-start gap-0 min-w-0">
-                <span className="text-xs font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">开始分析</span>
-                <span className="text-[10px] text-slate-400 group-hover:text-blue-500/70 transition-colors truncate max-w-full">了解如何上传和分析数据</span>
-              </div>
-              <div className="h-6 w-6 shrink-0 rounded-md bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
-                <BarChart3 className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
-              </div>
-            </button>
-            <button 
-              className="w-full flex items-center justify-between p-2.5 bg-white hover:bg-blue-50/80 border border-slate-200/60 hover:border-blue-200 rounded-lg transition-all duration-200 group shadow-sm"
-              onClick={() => onSendMessage("查看帮助文档")}
-            >
-              <div className="flex flex-col items-start gap-0 min-w-0">
-                <span className="text-xs font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">查看帮助</span>
-                <span className="text-[10px] text-slate-400 group-hover:text-blue-500/70 transition-colors truncate max-w-full">了解如何使用 THETA 系统</span>
-              </div>
-              <div className="h-6 w-6 shrink-0 rounded-md bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
-                <Zap className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
-              </div>
-            </button>
+            {dynamicSuggestions && dynamicSuggestions.length > 0 ? (
+              dynamicSuggestions.map((s, i) => (
+                <button
+                  key={i}
+                  className="w-full flex items-center justify-between p-2.5 bg-white hover:bg-blue-50/80 border border-slate-200/60 hover:border-blue-200 rounded-lg transition-all duration-200 group shadow-sm"
+                  onClick={s.onClick}
+                >
+                  <div className="flex flex-col items-start gap-0 min-w-0 flex-1">
+                    <span className="text-xs font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">{s.title}</span>
+                    <span className="text-[10px] text-slate-400 group-hover:text-blue-500/70 transition-colors truncate max-w-full">{s.description}</span>
+                  </div>
+                  <div className="h-6 w-6 shrink-0 rounded-md bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                    <BarChart3 className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                  </div>
+                </button>
+              ))
+            ) : (
+              <>
+                <button 
+                  className="w-full flex items-center justify-between p-2.5 bg-white hover:bg-blue-50/80 border border-slate-200/60 hover:border-blue-200 rounded-lg transition-all duration-200 group shadow-sm"
+                  onClick={() => onSendMessage("如何开始数据分析？")}
+                >
+                  <div className="flex flex-col items-start gap-0 min-w-0">
+                    <span className="text-xs font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">开始分析</span>
+                    <span className="text-[10px] text-slate-400 group-hover:text-blue-500/70 transition-colors truncate max-w-full">了解如何上传和分析数据</span>
+                  </div>
+                  <div className="h-6 w-6 shrink-0 rounded-md bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                    <BarChart3 className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                  </div>
+                </button>
+                <button 
+                  className="w-full flex items-center justify-between p-2.5 bg-white hover:bg-blue-50/80 border border-slate-200/60 hover:border-blue-200 rounded-lg transition-all duration-200 group shadow-sm"
+                  onClick={() => onSendMessage("查看帮助文档")}
+                >
+                  <div className="flex flex-col items-start gap-0 min-w-0">
+                    <span className="text-xs font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">查看帮助</span>
+                    <span className="text-[10px] text-slate-400 group-hover:text-blue-500/70 transition-colors truncate max-w-full">了解如何使用 THETA 系统</span>
+                  </div>
+                  <div className="h-6 w-6 shrink-0 rounded-md bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                    <Zap className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                  </div>
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

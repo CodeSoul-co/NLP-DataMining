@@ -51,6 +51,13 @@ async def register(user_data: UserRegister):
         )
         
         logger.info(f"New user registered: {user.username} ({user.email})")
+
+        # 初始化 OSS 用户目录（非阻断，失败只记 warning）
+        try:
+            from ..services.oss_service import init_user_oss_space
+            init_user_oss_space(user.id)
+        except Exception as oss_err:
+            logger.warning(f"OSS user space init skipped for user {user.id}: {oss_err}")
         
         return UserResponse(
             id=user.id,
@@ -194,6 +201,12 @@ async def update_profile(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post("/logout", tags=["auth"])
+async def logout():
+    """Logout - client should clear token (JWT 无状态，服务端无需处理)"""
+    return {"message": "已登出"}
 
 
 @router.post("/change-password", tags=["auth"])

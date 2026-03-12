@@ -23,8 +23,8 @@ def _get_bucket():
     if _bucket is None:
         try:
             import oss2
-            auth = oss2.Auth(settings.OSS_ACCESS_KEY_ID, settings.OSS_ACCESS_KEY_SECRET)
-            _bucket = oss2.Bucket(auth, settings.OSS_ENDPOINT, settings.OSS_BUCKET_NAME)
+            auth = oss2.Auth(settings.CLOUD_ACCESS_KEY_ID, settings.CLOUD_ACCESS_KEY_SECRET)
+            _bucket = oss2.Bucket(auth, settings.OSS_ENDPOINT, settings.RESOLVED_OSS_BUCKET)
         except Exception as e:
             logger.warning(f"OSS bucket init failed: {e}")
             return None
@@ -108,4 +108,25 @@ def save_user_to_oss(user_data: dict) -> bool:
         return True
     except Exception as e:
         logger.warning(f"save_user_to_oss error: {e}")
+        return False
+
+
+def init_user_oss_space(user_id: int) -> bool:
+    """
+    用户注册后在 OSS 中初始化用户专属目录。
+    OSS 没有真正的目录概念，通过写入占位对象来模拟：
+      data/{user_id}/.keep
+      result/{user_id}/.keep
+    返回 True 表示成功，False 表示 OSS 未配置或写入失败（不阻断注册流程）。
+    """
+    bucket = _get_bucket()
+    if not bucket:
+        return False
+    try:
+        bucket.put_object(f"data/{user_id}/.keep", b"")
+        bucket.put_object(f"result/{user_id}/.keep", b"")
+        logger.info(f"OSS user space initialized for user_id={user_id}")
+        return True
+    except Exception as e:
+        logger.warning(f"init_user_oss_space failed for user_id={user_id}: {e}")
         return False

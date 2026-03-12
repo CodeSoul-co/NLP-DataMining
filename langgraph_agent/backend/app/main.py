@@ -24,6 +24,9 @@ from .api.websocket import websocket_router
 from .api.auth import router as auth_router
 from .api.scripts import router as scripts_router
 from .api.oss import router as oss_router
+from .api.projects import router as projects_router
+from .api.agent_compat import agent_router
+from .api.data_api import router as data_api_router
 from .core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,6 +35,13 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler"""
+    # 生产环境必须显式配置 SECRET_KEY
+    _default_key = "theta-secure-key-change-in-production-2025"
+    if not settings.DEBUG and (not settings.SECRET_KEY or settings.SECRET_KEY == _default_key):
+        raise ValueError(
+            "SECRET_KEY must be explicitly set in production. "
+            "Set SECRET_KEY in environment or .env file."
+        )
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Debug Mode: {settings.DEBUG}")
     logger.info(f"Simulation Mode: {settings.SIMULATION_MODE}")
@@ -47,6 +57,9 @@ async def lifespan(app: FastAPI):
         from .core.database import init_db
         await init_db()
         logger.info("Database initialized")
+        # 从 PostgreSQL 恢复任务到内存缓存
+        from .services.task_store import task_store
+        await task_store.load_from_db()
     except Exception as e:
         logger.warning(f"Database initialization failed: {e}")
 
@@ -62,13 +75,15 @@ async def lifespan(app: FastAPI):
     
     # 检查 OSS 配置
     if settings.OSS_ENABLED:
-        logger.info(f"OSS enabled: {settings.OSS_BUCKET_NAME}")
+        logger.info(f"OSS enabled: bucket={settings.RESOLVED_OSS_BUCKET}, endpoint={settings.OSS_ENDPOINT}")
     else:
         logger.info("OSS not configured, using local storage")
     
-    # 检查 PAI 配置
-    if settings.PAI_ENABLED:
-        logger.info(f"PAI-DLC enabled: {settings.PAI_REGION}")
+    # 检查 PAI/DLC 配置
+    if settings.DLC_ENABLED:
+        logger.info(f"DLC enabled: workspace={settings.RESOLVED_WORKSPACE_ID}, dataset={settings.OSS_DATASET_ID}, region={settings.RESOLVED_REGION}")
+    elif settings.PAI_ENABLED:
+        logger.info(f"PAI-DLC enabled (no OSS_DATASET_ID): workspace={settings.RESOLVED_WORKSPACE_ID}, region={settings.RESOLVED_REGION}")
     else:
         logger.info("PAI-DLC not configured, using local training")
     
@@ -117,6 +132,9 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(agent_router, prefix="/api/agent", tags=["agent"])
+app.include_router(projects_router, prefix="/api")
+app.include_router(data_api_router)  # theta_1 风格: /api/data/presigned-url 等
 app.include_router(router, prefix="/api")
 app.include_router(oss_router, prefix="/api")
 app.include_router(websocket_router, prefix="/api")
@@ -132,6 +150,28 @@ if settings.RESULT_DIR.exists():
 
 
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import Optional
+
+class LegacyChatRequest(BaseModel):
+    message: str
+    job_id: str = ""
+    session_id: Optional[str] = None
+
+@app.post("/chat")
+async def legacy_chat(request: LegacyChatRequest):
+    """theta_1-main Legacy: Simple Q&A chat (no /api prefix)"""
+    from .services.chat_service import chat_service
+    from .schemas.agent import ChatRequest, ChatResponse
+    req = ChatRequest(message=request.message, context={"job_id": request.job_id})
+    resp = chat_service.process_message(req)
+    return {
+        "job_id": request.job_id or "",
+        "session_id": request.session_id or "",
+        "message": resp.message,
+        "status": "ok"
+    }
+
 
 @app.get("/")
 async def root():
@@ -145,6 +185,20 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "api": "/api"
+    }
+
+
+@app.get("/config")
+async def get_config():
+    """theta_1 风格配置（前端 getConfig 使用）"""
+    return {
+        "oss_bucket": settings.OSS_BUCKET_NAME or "theta-prod",
+        "oss_endpoint": settings.OSS_ENDPOINT or "oss-cn-shanghai.aliyuncs.com",
+        "default_num_topics": settings.DEFAULT_NUM_TOPICS,
+        "default_epochs": settings.DEFAULT_EPOCHS,
+        "supported_models": ["theta", "lda", "hdp", "btm", "etm", "ctm", "dtm", "nvdm", "gsm", "prodlda", "bertopic"],
+        "supported_modes": ["zero_shot", "supervised", "unsupervised"],
+        "supported_model_sizes": ["0.6B", "4B", "8B"],
     }
 
 
@@ -172,6 +226,18 @@ async def health():
             health_status["redis"] = "connected"
         except Exception as e:
             health_status["redis"] = f"error: {str(e)[:50]}"
+
+    # OSS / DLC 状态
+    health_status["oss_enabled"] = settings.OSS_ENABLED
+    health_status["dlc_enabled"] = settings.DLC_ENABLED
+    if settings.OSS_ENABLED:
+        health_status["oss_bucket"] = settings.RESOLVED_OSS_BUCKET
+        health_status["oss_endpoint"] = settings.OSS_ENDPOINT
+    if settings.PAI_ENABLED:
+        health_status["dlc_workspace_id"] = settings.RESOLVED_WORKSPACE_ID
+        health_status["dlc_region"] = settings.RESOLVED_REGION
+        health_status["dlc_image"] = settings.PAI_TRAINING_IMAGE
+
     return health_status
 
 

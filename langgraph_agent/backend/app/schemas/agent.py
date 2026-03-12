@@ -134,7 +134,17 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     current_step: Optional[str] = None
     progress: float = Field(default=0, ge=0, le=100)
-    
+    message: Optional[str] = None
+
+    # Task parameters
+    dataset: Optional[str] = None
+    mode: Optional[str] = None
+    num_topics: Optional[int] = None
+
+    # DLC cloud training
+    dlc_job_id: Optional[str] = None
+    dlc_status: Optional[str] = None
+
     # Results (populated when completed)
     metrics: Optional[Dict[str, float]] = None
     topic_words: Optional[Dict[str, List[str]]] = None

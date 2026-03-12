@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # THETA 本地开发启动脚本
-# 启动：后端(8000) + DataClean(8001) + 前端(3000)
+# 启动：后端 langgraph_agent(8000) + DataClean(8001) + 前端(3000)
+# 8000 使用 langgraph_agent 后端（完整路由 + OSS/DLC 集成）
 # 若自动启动失败，请用 分步启动 方式（见下方或 前后端完成与对接情况.md）
 
 # 不用 set -e，单步失败时继续尝试后续服务
@@ -40,25 +41,34 @@ kill_port() {
   fi
 }
 
-export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/ETM:$PROJECT_ROOT/langgraph_agent/backend"
-export SIMULATION_MODE=true
+export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/ETM:$PROJECT_ROOT/theta_1-main:$PROJECT_ROOT/langgraph_agent/backend"
 export DEBUG=true
 
-# 从 .env 注入 QWEN_API_KEY（AI 助手用），优先 项目根/.env，否则 backend/.env
-for f in "$PROJECT_ROOT/.env" "$PROJECT_ROOT/langgraph_agent/backend/.env"; do
-  if [ -f "$f" ] && grep -q '^QWEN_API_KEY=' "$f" 2>/dev/null; then
-    export QWEN_API_KEY=$(grep '^QWEN_API_KEY=' "$f" | sed 's/^QWEN_API_KEY=//' | tr -d '"' | tr -d "'" | head -1)
-    [ -n "$QWEN_API_KEY" ] && echo -e "${GREEN}✓${NC} 已从 .env 加载 QWEN_API_KEY（AI 助手）" || true
-    break
-  fi
-done
+# 从 backend/.env 加载 SIMULATION_MODE（若 .env 有 SIMULATION_MODE=false 则用 PostgreSQL）
+BACKEND_ENV="$PROJECT_ROOT/langgraph_agent/backend/.env"
+if [ -f "$BACKEND_ENV" ] && grep -q '^SIMULATION_MODE=' "$BACKEND_ENV" 2>/dev/null; then
+  export SIMULATION_MODE=$(grep '^SIMULATION_MODE=' "$BACKEND_ENV" | sed 's/^SIMULATION_MODE=//' | tr -d '"' | tr -d "'" | head -1)
+fi
+export SIMULATION_MODE="${SIMULATION_MODE:-true}"
 
-# 后端依赖（模拟模式：SQLite，不依赖 PostgreSQL/Redis）
-echo -e "\n${YELLOW}[1/3] 后端 API (8000)${NC}"
-for pkg in fastapi uvicorn sqlalchemy aiosqlite; do
-  python3 -c "import $pkg" 2>/dev/null || pip install -q "$pkg" 2>/dev/null || true
+# 从 .env 注入环境变量
+for f in "$PROJECT_ROOT/.env" "$PROJECT_ROOT/theta_1-main/.env"; do
+  [ ! -f "$f" ] && continue
+  for key in QWEN_API_KEY ALIBABA_CLOUD_ACCESS_KEY_ID ALIBABA_CLOUD_ACCESS_KEY_SECRET OSS_ENDPOINT OSS_BUCKET DLC_WORKSPACE_ID OSS_DATASET_ID DLC_INSTANCE_TYPE DLC_TRAINING_IMAGE ALIBABA_CLOUD_REGION; do
+    if grep -q "^${key}=" "$f" 2>/dev/null; then
+      val=$(grep "^${key}=" "$f" | sed "s/^${key}=//" | tr -d '"' | tr -d "'" | head -1)
+      [ -n "$val" ] && export "$key=$val"
+    fi
+  done
 done
-python3 -c "import langgraph" 2>/dev/null || pip install -q langgraph langchain langchain-core 2>/dev/null || true
+[ -n "$ALIBABA_CLOUD_ACCESS_KEY_ID" ] && echo -e "${GREEN}✓${NC} 已加载 OSS/DLC 配置" || echo -e "${YELLOW}⊘ 未配置 OSS/DLC${NC} → 上传将使用本地模式，需在 .env 配置阿里云凭证以启用 OSS+DLC"
+
+# 后端依赖（langgraph_agent：完整路由 + OSS/DLC 集成）
+echo -e "\n${YELLOW}[1/3] 后端 API (8000) - langgraph_agent (含 OSS+DLC)${NC}"
+for pkg in fastapi uvicorn pydantic; do
+  python3 -c "import $pkg" 2>/dev/null || python3 -m pip install -q "$pkg" 2>/dev/null || true
+done
+[ -f "$PROJECT_ROOT/langgraph_agent/backend/requirements.txt" ] && python3 -m pip install -q -r "$PROJECT_ROOT/langgraph_agent/backend/requirements.txt" 2>/dev/null || true
 
 kill_port 8000
 cd "$PROJECT_ROOT/langgraph_agent/backend" || exit 1

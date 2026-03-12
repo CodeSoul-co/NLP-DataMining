@@ -3,16 +3,14 @@ Scripts API Routes
 用于执行和管理服务器上的 bash 脚本
 """
 
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from typing import List, Dict, Optional
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..services.script_service import (
     script_service,
     ScriptInfo,
-    ScriptJob,
-    ScriptStatus,
-    AVAILABLE_SCRIPTS
+    AVAILABLE_SCRIPTS,
 )
 from ..core.logging import get_logger
 
@@ -87,20 +85,22 @@ async def get_script(script_id: str):
 async def execute_script(request: ExecuteScriptRequest):
     """
     执行指定脚本
-    
+
     参数说明：
-    - script_id: 脚本ID (如 "05_etm_train")
-    - parameters: 脚本参数字典
-    
+    - script_id: 脚本 ID (如 "04_train_theta")
+    - parameters: 脚本参数字典（值统一为字符串）
+
     示例：
     ```json
     {
-        "script_id": "05_etm_train",
+        "script_id": "04_train_theta",
         "parameters": {
-            "dataset": "hatespeech",
+            "dataset": "edu_data",
+            "model_size": "0.6B",
             "mode": "zero_shot",
             "num_topics": "20",
-            "epochs": "50"
+            "epochs": "100",
+            "language": "zh"
         }
     }
     ```
@@ -192,103 +192,219 @@ async def cancel_job(job_id: str):
 # 便捷端点：直接执行特定脚本
 # ==========================================
 
-class TrainRequest(BaseModel):
-    """训练请求"""
+class CleanDataRequest(BaseModel):
+    input: str
+    language: str
+    text_column: Optional[str] = None
+    label_columns: Optional[str] = None
+    keep_all: bool = False
+    min_words: int = 3
+
+
+class PrepareDataRequest(BaseModel):
     dataset: str
+    model: str
+    vocab_size: int = 5000
+    language: str = "english"
+    model_size: str = "0.6B"
+    mode: str = "zero_shot"
+    label_column: Optional[str] = None
+    time_column: Optional[str] = None
+    bow_only: bool = False
+
+
+class TrainThetaRequest(BaseModel):
+    dataset: str
+    model_size: str = "0.6B"
     mode: str = "zero_shot"
     num_topics: int = 20
-    epochs: int = 50
+    epochs: int = 100
     batch_size: int = 64
+    hidden_dim: int = 512
+    learning_rate: str = "0.002"
+    language: str = "en"
+    skip_viz: bool = False
 
 
-class EmbeddingRequest(BaseModel):
-    """Embedding生成请求"""
+class TrainBaselineRequest(BaseModel):
     dataset: str
-    mode: str = "zero_shot"
-    epochs: int = 3
-    batch_size: int = 16
-
-
-class EvaluateRequest(BaseModel):
-    """评估请求"""
-    dataset: str
-    mode: str = "zero_shot"
+    models: str
+    num_topics: int = 20
+    epochs: int = 100
+    batch_size: int = 64
+    language: str = "en"
+    with_viz: bool = False
 
 
 class VisualizeRequest(BaseModel):
-    """可视化请求"""
     dataset: str
+    baseline: bool = False
+    model: Optional[str] = None
+    num_topics: int = 20
+    model_size: str = "0.6B"
+    mode: str = "zero_shot"
+    language: str = "en"
+    dpi: int = 300
+
+
+class EvaluateRequest(BaseModel):
+    dataset: str
+    model: str
+    num_topics: int = 20
+    model_size: str = "0.6B"
     mode: str = "zero_shot"
 
 
-class FullPipelineRequest(BaseModel):
-    """完整流程请求"""
+class CompareRequest(BaseModel):
     dataset: str
-    mode: str = "zero_shot"
+    models: str
     num_topics: int = 20
 
 
-@router.post("/train", response_model=ExecuteScriptResponse)
-async def train_etm(request: TrainRequest):
-    """便捷端点：执行ETM训练"""
+class QuickStartRequest(BaseModel):
+    dataset: str
+    language: str = "english"
+
+
+@router.post("/clean", response_model=ExecuteScriptResponse)
+async def clean_data(request: CleanDataRequest):
+    """便捷端点：数据清洗 (02_clean_data.sh)"""
+    params: Dict[str, str] = {
+        "input": request.input,
+        "language": request.language,
+        "min_words": str(request.min_words),
+    }
+    if request.text_column:
+        params["text_column"] = request.text_column
+    if request.label_columns:
+        params["label_columns"] = request.label_columns
+    if request.keep_all:
+        params["keep_all"] = "true"
     return await execute_script(ExecuteScriptRequest(
-        script_id="05_etm_train",
-        parameters={
-            "dataset": request.dataset,
-            "mode": request.mode,
-            "num_topics": str(request.num_topics),
-            "epochs": str(request.epochs),
-            "batch_size": str(request.batch_size)
-        }
+        script_id="02_clean_data", parameters=params,
     ))
 
 
-@router.post("/embedding", response_model=ExecuteScriptResponse)
-async def generate_embedding(request: EmbeddingRequest):
-    """便捷端点：生成Embedding"""
+@router.post("/prepare", response_model=ExecuteScriptResponse)
+async def prepare_data(request: PrepareDataRequest):
+    """便捷端点：数据准备 (03_prepare_data.sh)"""
+    params: Dict[str, str] = {
+        "dataset": request.dataset,
+        "model": request.model,
+        "vocab_size": str(request.vocab_size),
+        "language": request.language,
+    }
+    if request.model == "theta":
+        params["model_size"] = request.model_size
+        params["mode"] = request.mode
+    if request.label_column:
+        params["label_column"] = request.label_column
+    if request.time_column and request.model == "dtm":
+        params["time_column"] = request.time_column
+    if request.bow_only:
+        params["bow-only"] = "true"
     return await execute_script(ExecuteScriptRequest(
-        script_id="02_embedding_generate",
-        parameters={
-            "dataset": request.dataset,
-            "mode": request.mode,
-            "epochs": str(request.epochs),
-            "batch_size": str(request.batch_size)
-        }
+        script_id="03_prepare_data", parameters=params,
     ))
 
 
-@router.post("/evaluate", response_model=ExecuteScriptResponse)
-async def evaluate_model(request: EvaluateRequest):
-    """便捷端点：评估模型"""
+@router.post("/train-theta", response_model=ExecuteScriptResponse)
+async def train_theta(request: TrainThetaRequest):
+    """便捷端点：THETA 训练 (04_train_theta.sh)"""
+    params: Dict[str, str] = {
+        "dataset": request.dataset,
+        "model_size": request.model_size,
+        "mode": request.mode,
+        "num_topics": str(request.num_topics),
+        "epochs": str(request.epochs),
+        "batch_size": str(request.batch_size),
+        "hidden_dim": str(request.hidden_dim),
+        "learning_rate": request.learning_rate,
+        "language": request.language,
+    }
+    if request.skip_viz:
+        params["skip-viz"] = "true"
     return await execute_script(ExecuteScriptRequest(
-        script_id="06_evaluate",
-        parameters={
-            "dataset": request.dataset,
-            "mode": request.mode
-        }
+        script_id="04_train_theta", parameters=params,
+    ))
+
+
+@router.post("/train-baseline", response_model=ExecuteScriptResponse)
+async def train_baseline(request: TrainBaselineRequest):
+    """便捷端点：基线模型训练 (05_train_baseline.sh)"""
+    params: Dict[str, str] = {
+        "dataset": request.dataset,
+        "models": request.models,
+        "num_topics": str(request.num_topics),
+        "epochs": str(request.epochs),
+        "batch_size": str(request.batch_size),
+        "language": request.language,
+    }
+    if request.with_viz:
+        params["with-viz"] = "true"
+    return await execute_script(ExecuteScriptRequest(
+        script_id="05_train_baseline", parameters=params,
     ))
 
 
 @router.post("/visualize", response_model=ExecuteScriptResponse)
 async def visualize_results(request: VisualizeRequest):
-    """便捷端点：生成可视化"""
+    """便捷端点：可视化 (06_visualize.sh)"""
+    params: Dict[str, str] = {
+        "dataset": request.dataset,
+        "language": request.language,
+        "dpi": str(request.dpi),
+    }
+    if request.baseline:
+        params["baseline"] = "true"
+        if request.model:
+            params["model"] = request.model
+        params["num_topics"] = str(request.num_topics)
+    else:
+        params["model_size"] = request.model_size
+        params["mode"] = request.mode
     return await execute_script(ExecuteScriptRequest(
-        script_id="07_visualize",
-        parameters={
-            "dataset": request.dataset,
-            "mode": request.mode
-        }
+        script_id="06_visualize", parameters=params,
     ))
 
 
-@router.post("/pipeline", response_model=ExecuteScriptResponse)
-async def run_full_pipeline(request: FullPipelineRequest):
-    """便捷端点：运行完整流程"""
+@router.post("/evaluate", response_model=ExecuteScriptResponse)
+async def evaluate_model(request: EvaluateRequest):
+    """便捷端点：模型评估 (07_evaluate.sh)"""
+    params: Dict[str, str] = {
+        "dataset": request.dataset,
+        "model": request.model,
+        "num_topics": str(request.num_topics),
+    }
+    if request.model == "theta":
+        params["model_size"] = request.model_size
+        params["mode"] = request.mode
     return await execute_script(ExecuteScriptRequest(
-        script_id="run_full_pipeline",
+        script_id="07_evaluate", parameters=params,
+    ))
+
+
+@router.post("/compare", response_model=ExecuteScriptResponse)
+async def compare_models(request: CompareRequest):
+    """便捷端点：模型对比 (08_compare_models.sh)"""
+    return await execute_script(ExecuteScriptRequest(
+        script_id="08_compare_models",
         parameters={
             "dataset": request.dataset,
-            "mode": request.mode,
-            "num_topics": str(request.num_topics)
-        }
+            "models": request.models,
+            "num_topics": str(request.num_topics),
+        },
+    ))
+
+
+@router.post("/quick-start", response_model=ExecuteScriptResponse)
+async def quick_start(request: QuickStartRequest):
+    """便捷端点：快速开始 (10/11_quick_start)"""
+    script_id = (
+        "11_quick_start_chinese" if request.language == "chinese"
+        else "10_quick_start_english"
+    )
+    return await execute_script(ExecuteScriptRequest(
+        script_id=script_id,
+        parameters={"dataset": request.dataset},
     ))

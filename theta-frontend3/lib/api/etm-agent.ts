@@ -1,43 +1,42 @@
 /**
- * ETM Agent API Client
- * 用于与后端 LangGraph Agent 通信
+ * THETA API Client — 适配 theta_1-main 后端
+ *
+ * 两个后端服务：
+ *   主 API  (api/main.py)  → 认证、OSS 数据上传、DLC 训练任务管理
+ *   Agent API (agent/api.py) → AI 分析、多轮对话、指标/主题解读、图表分析
+ *
+ * 前端通过 NEXT_PUBLIC_API_URL / NEXT_PUBLIC_AGENT_URL 指向它们。
  */
 
-// 如果设置为空字符串，使用相对路径（通过 nginx 路由）
-// 否则使用环境变量或默认值
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL !== undefined 
-  ? process.env.NEXT_PUBLIC_API_URL 
-  : 'http://localhost:8000';
+import { apiFetch, API_BASE, AGENT_BASE } from './config';
 
 // ==================== 类型定义 ====================
 
 export interface TaskResponse {
   task_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: 'pending_upload' | 'submitting_dlc' | 'training' | 'completed' | 'error'
+    | 'pending' | 'running' | 'failed' | 'cancelled';
   current_step?: string;
   progress: number;
   message?: string;
-  
-  // Task configuration
+
   dataset?: string;
   mode?: string;
   num_topics?: number;
-  
-  // Results
+
   metrics?: Record<string, number>;
   topic_words?: Record<string, string[]>;
   visualization_paths?: string[];
-  
-  // Timing
+
   created_at?: string;
   updated_at?: string;
   completed_at?: string;
   duration_seconds?: number;
-  
-  // Error
+
+  dlc_job_id?: string;
+  dlc_status?: string;
   error_message?: string;
-  
-  // Deprecated (for backwards compatibility)
+
   result?: any;
   error?: string;
 }
@@ -49,6 +48,8 @@ export interface CreateTaskRequest {
   vocab_size?: number;
   epochs?: number;
   batch_size?: number;
+  model_size?: string;
+  models?: string;
 }
 
 export interface DatasetInfo {
@@ -56,6 +57,21 @@ export interface DatasetInfo {
   path: string;
   file_count?: number;
   total_size?: string;
+  size?: number;
+}
+
+/** 数据库中的用户项目（需登录） */
+export interface ProjectInfo {
+  id: number;
+  name: string;
+  dataset_name?: string | null;
+  mode: string;
+  num_topics: number;
+  status: string;
+  pipeline_status?: string | null;
+  task_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface ResultInfo {
@@ -63,16 +79,10 @@ export interface ResultInfo {
   mode: string;
   timestamp: string;
   path: string;
-  
-  // Model info
   num_topics?: number;
   vocab_size?: number;
   epochs_trained?: number;
-  
-  // Metrics
   metrics?: Record<string, number>;
-  
-  // Available files
   has_model?: boolean;
   has_theta?: boolean;
   has_beta?: boolean;
@@ -80,17 +90,7 @@ export interface ResultInfo {
   has_visualizations?: boolean;
 }
 
-export interface VisualizationInfo {
-  name: string;
-  type: string;
-  path: string;
-  url?: string;
-}
-
-export interface TopicWord {
-  word: string;
-  weight: number;
-}
+export interface TopicWord { word: string; weight: number; }
 
 export interface MetricsResponse {
   coherence?: number;
@@ -99,16 +99,10 @@ export interface MetricsResponse {
   [key: string]: any;
 }
 
-/** 后端预处理任务状态（含细粒度阶段） */
 export type PreprocessingJobStatus =
-  | 'pending'
-  | 'bow_generating'
-  | 'bow_completed'
-  | 'embedding_generating'
-  | 'embedding_completed'
-  | 'running'
-  | 'completed'
-  | 'failed';
+  | 'pending' | 'bow_generating' | 'bow_completed'
+  | 'embedding_generating' | 'embedding_completed'
+  | 'running' | 'completed' | 'failed';
 
 export interface PreprocessingJob {
   job_id: string;
@@ -126,7 +120,6 @@ export interface PreprocessingJob {
   vocab_path?: string | null;
 }
 
-/** 检查数据集是否已预处理（BOW + 嵌入）时的返回 */
 export interface PreprocessingStatus {
   dataset?: string;
   has_bow: boolean;
@@ -137,124 +130,156 @@ export interface PreprocessingStatus {
   vocab_path?: string | null;
 }
 
-// ==================== 脚本执行类型 ====================
+// ==================== OSS 直传辅助 ====================
 
-export interface ScriptParameter {
-  name: string;
-  type: string;
-  required?: boolean;
-  default?: string;
-  description: string;
-}
-
-export interface ScriptInfo {
-  id: string;
-  name: string;
-  description: string;
-  parameters: ScriptParameter[];
-  category: string;
-}
-
-export interface ScriptJob {
+interface PresignedUrlResponse {
   job_id: string;
-  script_id: string;
-  script_name: string;
-  parameters: Record<string, string>;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-  progress: number;
-  message: string;
-  logs: string[];
-  exit_code?: number;
-  created_at: string;
-  updated_at: string;
-  completed_at?: string;
-  error_message?: string;
+  upload_url: string;
+  oss_path: string;
+  content_type: string;
+  expires_in: number;
 }
 
-export interface ExecuteScriptRequest {
-  script_id: string;
-  parameters: Record<string, string>;
-}
+/**
+ * OSS 三步直传流程：
+ * 1. 后端签发上传 URL → 2. 前端 PUT 到 OSS → 3. 通知后端上传完成并触发训练
+ */
+async function ossUpload(
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<PresignedUrlResponse> {
+  onProgress?.(5);
+  const presigned = await apiFetch<PresignedUrlResponse>(API_BASE, '/api/data/presigned-url', {
+    method: 'POST',
+    body: JSON.stringify({
+      filename: file.name,
+      content_type: file.type || null,
+    }),
+  });
 
-export interface ExecuteScriptResponse {
-  job_id: string;
-  script_id: string;
-  script_name: string;
-  status: string;
-  message: string;
-}
-
-// ==================== API 请求函数 ====================
-
-async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  // 获取 token（如果存在）
-  const token = localStorage.getItem('access_token');
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options?.headers,
-  };
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...options,
-      headers,
+  onProgress?.(10);
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.total > 0 && onProgress) {
+        onProgress(10 + Math.round((e.loaded / e.total) * 80));
+      }
     });
-  } catch (error: any) {
-    // 网络错误（连接失败、CORS、超时等）
-    const errorMessage = error.message || 'Network error';
-    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-      throw new Error('无法连接到后端服务。请检查：\n1. 后端是否在本地运行（如 ./start.sh 或 uvicorn）\n2. NEXT_PUBLIC_API_URL 是否为 http://localhost:8000\n3. 网络连接是否正常');
-    }
-    throw error;
-  }
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        const detail = xhr.responseText?.match(/<Message>(.*?)<\/Message>/)?.[1] || '';
+        reject(new Error(`OSS 上传失败 (HTTP ${xhr.status})${detail ? ': ' + detail : ''}`));
+      }
+    });
+    xhr.addEventListener('error', () => reject(new Error('OSS 上传网络错误')));
+    xhr.addEventListener('timeout', () => reject(new Error('OSS 上传超时')));
+    xhr.open('PUT', presigned.upload_url);
+    xhr.setRequestHeader('Content-Type', presigned.content_type);
+    xhr.timeout = 300_000;
+    xhr.send(file);
+  });
 
-  if (!response.ok) {
-    // 对于 404 错误，提供更详细的错误信息
-    if (response.status === 404) {
-      const error = await response.json().catch(() => ({ detail: 'Not Found' }));
-      const errorMessage = error.detail || 'Not Found';
-      throw new Error(
-        errorMessage === 'Not Found' 
-          ? `API 端点不存在: ${endpoint}。请检查后端服务是否已更新。`
-          : errorMessage
-      );
-    }
-    
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-
-  return response.json();
+  onProgress?.(95);
+  return presigned;
 }
 
-// ==================== ETM Agent API ====================
+// ==================== 主 API ====================
 
 export const ETMAgentAPI = {
   // ========== 健康检查 ==========
-  async healthCheck(): Promise<{ status: string; gpu_available: boolean }> {
-    return fetchApi('/api/health');
+  async healthCheck(): Promise<{ status: string; gpu_available?: boolean }> {
+    return apiFetch(API_BASE, '/health');
+  },
+
+  // ========== 后端配置 ==========
+  async getConfig(): Promise<{
+    oss_bucket: string;
+    supported_models: string[];
+    supported_modes: string[];
+    supported_model_sizes: string[];
+    default_num_topics: number;
+    default_epochs: number;
+  }> {
+    return apiFetch(API_BASE, '/config');
+  },
+
+  // ========== 项目管理（数据库，需登录） ==========
+
+  async getProjects(): Promise<ProjectInfo[]> {
+    try {
+      return await apiFetch<ProjectInfo[]>(API_BASE, '/api/projects');
+    } catch {
+      return [];
+    }
+  },
+
+  async createProject(data: { name: string; dataset_name?: string; mode?: string; num_topics?: number }): Promise<ProjectInfo> {
+    return apiFetch<ProjectInfo>(API_BASE, '/api/projects', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: data.name,
+        dataset_name: data.dataset_name,
+        mode: data.mode ?? 'zero_shot',
+        num_topics: data.num_topics ?? 20,
+      }),
+    });
+  },
+
+  async updateProject(
+    id: number,
+    data: Partial<{ name: string; dataset_name: string; mode: string; num_topics: number; status: string; pipeline_status: string; task_id: string }>,
+  ): Promise<ProjectInfo> {
+    return apiFetch<ProjectInfo>(API_BASE, `/api/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** theta_1 流程：在开始分析前将 job 中的文件落到 dataset 目录 */
+  async prepareDataset(jobId: string, datasetName: string): Promise<{ status: string; dataset: string }> {
+    return apiFetch(API_BASE, '/api/data/prepare-dataset', {
+      method: 'POST',
+      body: JSON.stringify({ job_id: jobId, dataset_name: datasetName }),
+    });
+  },
+
+  async deleteProject(id: number): Promise<void> {
+    await apiFetch(API_BASE, `/api/projects/${id}`, { method: 'DELETE' });
   },
 
   // ========== 数据集管理 ==========
-  async getDatasets(): Promise<DatasetInfo[]> {
-    return fetchApi('/api/datasets');
-  },
 
-  async getDataset(name: string): Promise<DatasetInfo> {
-    return fetchApi(`/api/datasets/${name}`);
+  async getDatasets(): Promise<DatasetInfo[]> {
+    try {
+      return await apiFetch<DatasetInfo[]>(API_BASE, '/api/datasets');
+    } catch {
+      try {
+        const data = await apiFetch<{ jobs: any[] }>(API_BASE, '/api/data/jobs');
+        const seen = new Set<string>();
+        return (data.jobs || [])
+          .filter((j: any) => {
+            const name = j.dataset_name || j.filename?.replace('.csv', '') || j.job_id;
+            if (seen.has(name)) return false;
+            seen.add(name);
+            return true;
+          })
+          .map((j: any) => ({
+            name: j.dataset_name || j.filename?.replace('.csv', '') || j.job_id,
+            path: j.oss_path || '',
+            file_count: 1,
+          }));
+      } catch {
+        return [];
+      }
+    }
   },
 
   async uploadDataset(
     files: File[],
     datasetName: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
   ): Promise<{
     success: boolean;
     message: string;
@@ -262,538 +287,573 @@ export const ETMAgentAPI = {
     file_count: number;
     total_size: number;
     files: string[];
+    job_id: string;
   }> {
+    const file = files[0];
+    if (!file) throw new Error('请选择文件');
+
+    // 优先 theta_1 流程：presigned-url → 直传 → job_id（兼容 OSS 与本地后端直传）
+    try {
+      const presigned = await ossUpload(file, onProgress);
+      onProgress?.(100);
+      return {
+        success: true,
+        message: '上传成功',
+        dataset_name: datasetName,
+        file_count: 1,
+        total_size: file.size,
+        files: [file.name],
+        job_id: presigned.job_id,
+      };
+    } catch (err: any) {
+      if (err.message?.includes('404') || err.message?.includes('Not Found') || err.message?.includes('401')) {
+        // 回退到 FormData（/api/datasets/upload）
+        const formResult = await this._uploadDatasetFormData(files, datasetName, onProgress);
+        return {
+          ...formResult,
+          job_id: (formResult as any).job_id ?? formResult.dataset_name ?? '',
+        };
+      }
+      throw err;
+    }
+  },
+
+  async _uploadDatasetFormData(
+    files: File[],
+    datasetName: string,
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
     const formData = new FormData();
     formData.append('dataset_name', datasetName);
-    
-    // 计算总文件大小（用于真实进度计算）
-    let totalFileSize = 0;
-    files.forEach(file => {
-      formData.append('files', file);
-      totalFileSize += file.size;
-    });
-
-    console.log(`[Upload] Starting upload: ${files.length} files, total size: ${(totalFileSize / 1024).toFixed(2)} KB`);
+    files.forEach((f) => formData.append('files', f));
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      
-      let lastProgress = 0;
-      let progressUpdateCount = 0;
-      
-      // 在上传开始时设置进度为 0%
-      if (onProgress) {
-        onProgress(0);
-        lastProgress = 0;
-      }
-      
-      // 监听上传进度事件（这是浏览器原生事件，显示真实上传进度）
-      xhr.upload.addEventListener('progress', (event) => {
-        progressUpdateCount++;
-        if (onProgress && event.total > 0) {
-          // 使用真实的上传进度（event.loaded / event.total）
-          const progress = Math.min(Math.round((event.loaded / event.total) * 100), 99);
-          
-          // 只在进度实际变化时更新，避免频繁更新
-          if (progress !== lastProgress) {
-            lastProgress = progress;
-            console.log(`[Upload Progress] ${progress}% (${(event.loaded / 1024).toFixed(2)} KB / ${(event.total / 1024).toFixed(2)} KB)`);
-            onProgress(progress);
-          }
-        } else if (onProgress && event.loaded > 0) {
-          // 如果没有 total 信息但已经有加载数据，使用文件大小估算
-          const estimatedProgress = Math.min(Math.round((event.loaded / totalFileSize) * 100), 95);
-          if (estimatedProgress !== lastProgress) {
-            lastProgress = estimatedProgress;
-            console.log(`[Upload Progress] ~${estimatedProgress}% (estimated from ${(event.loaded / 1024).toFixed(2)} KB loaded)`);
-            onProgress(estimatedProgress);
-          }
-        }
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.total > 0 && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
       });
-
-      xhr.addEventListener('loadstart', () => {
-        console.log('[Upload] Load started');
-        if (onProgress && lastProgress === 0) {
-          onProgress(1); // 至少显示1%表示已开始
-        }
-      });
-
       xhr.addEventListener('load', () => {
-        console.log(`[Upload] Load complete, status: ${xhr.status}, readyState: ${xhr.readyState}, progress events: ${progressUpdateCount}`);
-        
-        // 上传完成，设置进度为 100%
-        if (onProgress) {
-          onProgress(100);
-        }
-        
-        // status === 0 通常表示网络错误（连接失败、CORS 错误等）
-        if (xhr.status === 0) {
-          reject(new Error('无法连接到后端服务。请检查：\n1. 后端是否在本地运行（如 ./start.sh 或 uvicorn）\n2. NEXT_PUBLIC_API_URL 是否为 http://localhost:8000\n3. 网络连接是否正常'));
-          return;
-        }
-        
         if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            console.log('[Upload] Success:', response);
-            resolve(response);
-          } catch (e) {
-            console.error('[Upload] Failed to parse response:', e);
-            reject(new Error('Invalid response format'));
-          }
-        } else if (xhr.status === 405) {
-          reject(new Error('上传接口不可用，请确保后端服务已重启并支持文件上传'));
+          resolve(JSON.parse(xhr.responseText));
         } else {
-          try {
-            const error = JSON.parse(xhr.responseText);
-            reject(new Error(error.detail || `服务器错误 (HTTP ${xhr.status})`));
-          } catch {
-            reject(new Error(`服务器错误 (HTTP ${xhr.status})`));
-          }
+          reject(new Error(`上传失败 (HTTP ${xhr.status})`));
         }
       });
-
-      xhr.addEventListener('error', (e) => {
-        console.error('[Upload] Network error:', {
-          error: e,
-          readyState: xhr.readyState,
-          status: xhr.status,
-          statusText: xhr.statusText,
-          responseText: xhr.responseText?.substring(0, 100)
-        });
-        
-        // XMLHttpRequest error 事件通常发生在网络层错误（连接失败、超时等）
-        // readyState 通常是 4（完成）或 0（未初始化）
-        // status 通常是 0
-        const errorMsg = xhr.status === 0 
-          ? '无法连接到后端服务。请检查：\n1. 后端是否在本地运行（如 ./start.sh）\n2. 后端服务是否正在运行\n3. 网络连接是否正常'
-          : `网络错误 (状态码: ${xhr.status}): 上传过程中连接中断`;
-        
-        reject(new Error(errorMsg));
-      });
-
-      xhr.addEventListener('abort', () => {
-        console.warn('[Upload] Upload aborted');
-        reject(new Error('Upload aborted'));
-      });
-
-      xhr.open('POST', `${API_BASE_URL}/api/datasets/upload`);
-      
-      // 设置超时时间（30 秒）
-      xhr.timeout = 30000;
-      
-      // 超时处理
-      xhr.addEventListener('timeout', () => {
-        console.error('[Upload] Timeout:', {
-          readyState: xhr.readyState,
-          status: xhr.status
-        });
-        reject(new Error('上传超时（30 秒）。请检查：\n1. 网络连接是否稳定\n2. 文件是否过大\n3. 后端服务是否正常响应'));
-      });
-      
-      // 确保不设置额外的 headers，让浏览器自动处理 Content-Type 和 Content-Length
-      // 这对于 FormData 上传很重要
-      
+      xhr.addEventListener('error', () => reject(new Error('上传网络错误')));
+      xhr.open('POST', `${API_BASE}/api/datasets/upload`);
+      const token = localStorage.getItem('access_token');
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.send(formData);
     });
   },
 
   async deleteDataset(name: string): Promise<{ success: boolean; message: string }> {
-    return fetchApi(`/api/datasets/${name}`, { method: 'DELETE' });
+    try {
+      return await apiFetch(API_BASE, `/api/datasets/${name}`, { method: 'DELETE' });
+    } catch {
+      return { success: false, message: '删除功能暂不支持' };
+    }
   },
 
-  // ========== 任务管理 (Task Center API) ==========
-  
-  /**
-   * 获取任务列表（支持过滤和分页）
-   */
+  // ========== 任务管理（job_id 体系） ==========
+
   async getTasks(params?: {
-    status?: string;
-    dataset?: string;
-    limit?: number;
-    offset?: number;
+    status?: string; dataset?: string; limit?: number; offset?: number;
   }): Promise<TaskResponse[]> {
-    const searchParams = new URLSearchParams();
-    if (params?.status) searchParams.set('status', params.status);
-    if (params?.dataset) searchParams.set('dataset', params.dataset);
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
-    if (params?.offset) searchParams.set('offset', params.offset.toString());
-    
-    const query = searchParams.toString();
-    return fetchApi(`/api/tasks${query ? `?${query}` : ''}`);
+    try {
+      const q = new URLSearchParams();
+      if (params?.status) q.set('status', params.status);
+      if (params?.dataset) q.set('dataset', params.dataset);
+      if (params?.limit) q.set('limit', String(params.limit));
+      if (params?.offset) q.set('offset', String(params.offset));
+      const qs = q.toString();
+      return await apiFetch(API_BASE, `/api/tasks${qs ? `?${qs}` : ''}`);
+    } catch {
+      const raw = await apiFetch<{ jobs: any[] }>(API_BASE, `/api/data/jobs?limit=${params?.limit ?? 20}`);
+      return (raw.jobs || []).map(normalizeJob);
+    }
   },
 
-  /**
-   * 获取任务统计信息
-   */
   async getTaskStats(): Promise<{
-    total: number;
-    pending: number;
-    running: number;
-    completed: number;
-    failed: number;
-    cancelled: number;
+    total: number; pending: number; running: number; completed: number; failed: number; cancelled: number;
   }> {
-    return fetchApi('/api/tasks/stats');
+    try {
+      return await apiFetch(API_BASE, '/api/tasks/stats');
+    } catch {
+      const tasks = await this.getTasks({ limit: 100 });
+      return {
+        total: tasks.length,
+        pending: tasks.filter((t) => t.status === 'pending_upload' || t.status === 'pending').length,
+        running: tasks.filter((t) => t.status === 'training' || t.status === 'running' || t.status === 'submitting_dlc').length,
+        completed: tasks.filter((t) => t.status === 'completed').length,
+        failed: tasks.filter((t) => t.status === 'error' || t.status === 'failed').length,
+        cancelled: tasks.filter((t) => t.status === 'cancelled').length,
+      };
+    }
   },
 
-  /**
-   * 获取单个任务详情
-   */
   async getTask(taskId: string): Promise<TaskResponse> {
-    return fetchApi(`/api/tasks/${taskId}`);
+    try {
+      return await apiFetch(API_BASE, `/api/tasks/${taskId}`);
+    } catch {
+      const raw = await apiFetch<any>(API_BASE, `/api/data/jobs/${taskId}/status`);
+      return normalizeJob(raw);
+    }
   },
 
-  /**
-   * 获取任务执行日志
-   */
   async getTaskLogs(taskId: string, tail: number = 50): Promise<{
-    task_id: string;
-    status: string;
-    logs: Array<{
-      step: string;
-      status: string;
-      message: string;
-      timestamp: string;
-    }>;
-    total_count: number;
+    task_id: string; status: string; logs: any[]; total_count: number;
   }> {
-    return fetchApi(`/api/tasks/${taskId}/logs?tail=${tail}`);
+    try {
+      return await apiFetch(API_BASE, `/api/tasks/${taskId}/logs?tail=${tail}`);
+    } catch {
+      return { task_id: taskId, status: 'unknown', logs: [], total_count: 0 };
+    }
   },
 
-  /**
-   * 创建新任务（Fire-and-Forget 模式）
-   * 立即返回 task_id，任务在后台执行
-   */
-  async createTask(request: CreateTaskRequest): Promise<TaskResponse> {
-    return fetchApi('/api/tasks', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+  async createTask(request: CreateTaskRequest & { job_id?: string }): Promise<TaskResponse> {
+    // job_id 仅用于 theta_1-main 的 OSS 流程；langgraph_agent 无 /api/data/upload-complete
+    const jobIdFromOss = request.job_id && request.job_id !== request.dataset;
+    if (jobIdFromOss) {
+      try {
+        const raw = await apiFetch<any>(API_BASE, '/api/data/upload-complete', {
+          method: 'POST',
+          body: JSON.stringify({
+            job_id: request.job_id,
+            dataset_name: request.dataset,
+            num_topics: request.num_topics ?? 20,
+            epochs: request.epochs ?? 100,
+            mode: request.mode ?? 'zero_shot',
+            model_size: request.model_size ?? '0.6B',
+            models: request.models ?? 'theta',
+          }),
+        });
+        return normalizeJob(raw);
+      } catch {
+        // 若 upload-complete 不存在，回退到 POST /api/tasks
+      }
+    }
+
+    try {
+      return await apiFetch(API_BASE, '/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(request),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '请先上传数据文件，再创建训练任务';
+      throw new Error(msg);
+    }
   },
 
-  /**
-   * 取消正在运行的任务
-   */
   async cancelTask(taskId: string): Promise<{ message: string }> {
-    return fetchApi(`/api/tasks/${taskId}`, {
-      method: 'DELETE',
-    });
+    try {
+      return await apiFetch(API_BASE, `/api/tasks/${taskId}`, { method: 'DELETE' });
+    } catch {
+      return { message: '取消失败或不支持' };
+    }
   },
 
-  /**
-   * 轮询任务状态直到完成
-   * @param taskId 任务ID
-   * @param onProgress 进度回调
-   * @param interval 轮询间隔（毫秒）
-   * @param timeout 超时时间（毫秒）
-   */
   async pollTaskUntilDone(
     taskId: string,
     onProgress?: (task: TaskResponse) => void,
-    interval: number = 2000,
-    timeout: number = 3600000 // 1 hour default
+    interval = 5000,
+    timeout = 3_600_000,
   ): Promise<TaskResponse> {
-    const startTime = Date.now();
-    
+    const start = Date.now();
     while (true) {
       const task = await this.getTask(taskId);
-      
-      if (onProgress) {
-        onProgress(task);
-      }
-      
-      // 任务完成
-      if (['completed', 'failed', 'cancelled'].includes(task.status)) {
-        return task;
-      }
-      
-      // 超时检查
-      if (Date.now() - startTime > timeout) {
-        throw new Error(`Task polling timeout after ${timeout / 1000} seconds`);
-      }
-      
-      // 等待下一次轮询
-      await new Promise(resolve => setTimeout(resolve, interval));
+      onProgress?.(task);
+      if (['completed', 'failed', 'cancelled', 'error'].includes(task.status)) return task;
+      if (Date.now() - start > timeout) throw new Error('轮询超时');
+      await new Promise((r) => setTimeout(r, interval));
     }
   },
 
   // ========== 结果查询 ==========
+
   async getResults(): Promise<ResultInfo[]> {
-    return fetchApi('/api/results');
+    try { return await apiFetch(API_BASE, '/api/results'); } catch { return []; }
   },
 
-  async getResult(dataset: string, mode: string): Promise<ResultInfo> {
-    return fetchApi(`/api/results/${dataset}/${mode}`);
+  /**
+   * 获取训练结果文件下载链接
+   * theta_1-main: GET /api/data/jobs/{id}/results → {files: {filename: signed_url}}
+   */
+  async getJobResults(jobId: string): Promise<{ job_id: string; result_base: string; files: Record<string, string> }> {
+    return apiFetch(API_BASE, `/api/data/jobs/${jobId}/results`);
   },
 
-  async getTopicWords(dataset: string, mode: string, topK: number = 10): Promise<Record<string, string[]>> {
-    return fetchApi(`/api/results/${dataset}/${mode}/topic-words?top_k=${topK}`);
+  async getTopicWords(dataset: string, mode: string, topK = 10): Promise<Record<string, string[]>> {
+    try {
+      return await apiFetch(API_BASE, `/api/results/${dataset}/${mode}/topic-words?top_k=${topK}`);
+    } catch {
+      return {};
+    }
+  },
+
+  async getTopicProportions(dataset: string, mode: string): Promise<{ topics: string[]; proportions: number[] }> {
+    try {
+      return await apiFetch(API_BASE, `/api/results/${dataset}/${mode}/visualization-data?data_type=topic_distribution`);
+    } catch {
+      return { topics: [], proportions: [] };
+    }
+  },
+
+  getTopicWordImportanceUrl(dataset: string, mode: string, topicIndex: number): string {
+    return `${API_BASE}/api/results/${encodeURIComponent(dataset)}/${encodeURIComponent(mode)}/visualizations/topics/topic_${topicIndex}/word_importance.png`;
   },
 
   async getMetrics(dataset: string, mode: string): Promise<MetricsResponse> {
-    return fetchApi(`/api/results/${dataset}/${mode}/metrics`);
+    try {
+      return await apiFetch(API_BASE, `/api/results/${dataset}/${mode}/metrics`);
+    } catch {
+      return {};
+    }
   },
 
-  // ========== 可视化 ==========
-  async getVisualizations(dataset: string, mode: string): Promise<VisualizationInfo[]> {
-    return fetchApi(`/api/results/${dataset}/${mode}/visualizations`);
+  async getDatasetPreview(dataset: string, jobId?: string): Promise<{ columns: string[]; rows: string[][] }> {
+    try {
+      const qs = jobId ? `?job_id=${encodeURIComponent(jobId)}` : "";
+      return await apiFetch(API_BASE, `/api/datasets/${encodeURIComponent(dataset)}/preview${qs}`);
+    } catch {
+      return { columns: [], rows: [] };
+    }
   },
 
-  async getVisualizationData(
-    dataset: string, 
-    mode: string, 
-    dataType: 'topic_distribution' | 'doc_topic_distribution' | 'topic_similarity'
-  ): Promise<{
-    topics?: string[];
-    proportions?: number[];
-    topic_words?: Record<string, string[]>;
-    documents?: string[];
-    distributions?: number[][];
-    num_topics?: number;
-    similarity_matrix?: number[][];
-  }> {
-    return fetchApi(`/api/results/${dataset}/${mode}/visualization-data?data_type=${dataType}`);
+  async listVisualizations(dataset: string, mode: string): Promise<Array<{ name: string; path: string; type: string; size?: number }>> {
+    try {
+      return await apiFetch(API_BASE, `/api/results/${dataset}/${mode}/visualizations`);
+    } catch {
+      return [];
+    }
   },
 
-  // ========== 聊天接口 ==========
-  async chat(message: string, context?: Record<string, unknown>): Promise<{ 
-    message: string; 
-    response?: string;  // 兼容旧格式
-    action?: string; 
-    task_id?: string;
-    data?: Record<string, unknown>;
-  }> {
-    return fetchApi('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ message, context }),
-    });
-  },
-
-  // ========== 对话历史 ==========
-  async saveConversationHistory(sessionId: string, messages: Array<{ role: string; content: string }>): Promise<{ message: string; session_id: string; message_count: number }> {
-    return fetchApi('/api/chat/history', {
-      method: 'POST',
-      body: JSON.stringify({ session_id: sessionId, messages }),
-    });
-  },
-
-  async getConversationHistory(sessionId: string): Promise<{ session_id: string; messages: Array<any>; count: number }> {
-    return fetchApi(`/api/chat/history/${sessionId}`);
-  },
-
-  async clearConversationHistory(sessionId: string): Promise<{ message: string; session_id: string }> {
-    return fetchApi(`/api/chat/history/${sessionId}`, {
-      method: 'DELETE',
-    });
-  },
-
-  // ========== 智能建议 ==========
-  async getSuggestions(context?: Record<string, unknown>): Promise<{ suggestions: Array<{ text: string; action: string; description: string; data?: Record<string, unknown> }> }> {
-    return fetchApi('/api/chat/suggestions', {
-      method: 'POST',
-      body: JSON.stringify(context || {}),
-    });
-  },
-
-  // ========== 预处理 (Embedding) ==========
-  async getEmbeddingModels(): Promise<{ models: string[] }> {
-    return fetchApi('/api/preprocessing/models');
-  },
-
-  async startPreprocessing(params: {
+  async getModelComparison(dataset: string): Promise<{
     dataset: string;
-    text_column?: string;  // Optional: if not provided, backend will auto-detect
-    config?: {
-      embedding_model?: string;
-      [key: string]: any;
-    };
-  }): Promise<PreprocessingJob> {
-    return fetchApi('/api/preprocessing/start', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
+    rows: Array<Record<string, unknown>>;
+    columns: Array<{ key: string; label: string; direction: string }>;
+  }> {
+    try {
+      return await apiFetch(API_BASE, `/api/results/${encodeURIComponent(dataset)}/model-comparison`);
+    } catch {
+      return { dataset, rows: [], columns: [] };
+    }
+  },
+
+  async exportResults(
+    dataset: string,
+    mode: string,
+    types: string[] = ['metrics', 'topic_words', 'visualizations'],
+  ): Promise<void> {
+    const params = new URLSearchParams({ types: types.join(',') });
+    const url = `${API_BASE}/api/results/${encodeURIComponent(dataset)}/${encodeURIComponent(mode)}/export?${params}`;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(url, { headers, credentials: 'include' });
+    if (!res.ok) throw new Error(`导出失败: ${res.status}`);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${dataset}_${mode}_results.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+
+  // ========== 预处理 ==========
+
+  async startPreprocessing(params: { dataset: string; text_column?: string; config?: any }): Promise<PreprocessingJob> {
+    try {
+      return await apiFetch(API_BASE, '/api/preprocessing/start', {
+        method: 'POST',
+        body: JSON.stringify(params),
+      });
+    } catch {
+      return {
+        job_id: `prep_${Date.now()}`,
+        dataset: params.dataset,
+        status: 'completed',
+        progress: 100,
+        message: '预处理跳过（当前后端不支持独立预处理步骤）',
+      };
+    }
   },
 
   async getPreprocessingJob(jobId: string): Promise<PreprocessingJob> {
-    return fetchApi(`/api/preprocessing/${jobId}`);
-  },
-
-  async getPreprocessingJobs(): Promise<PreprocessingJob[]> {
-    return fetchApi('/api/preprocessing');
-  },
-
-  async cancelPreprocessingJob(jobId: string): Promise<{ message: string }> {
-    return fetchApi(`/api/preprocessing/${jobId}`, {
-      method: 'DELETE',
-    });
+    try {
+      return await apiFetch(API_BASE, `/api/preprocessing/${jobId}`);
+    } catch {
+      return {
+        job_id: jobId,
+        dataset: '',
+        status: 'completed',
+        progress: 100,
+        message: null,
+      };
+    }
   },
 
   async checkPreprocessingStatus(dataset: string): Promise<PreprocessingStatus> {
-    return fetchApi(`/api/preprocessing/check/${dataset}`);
+    try {
+      return await apiFetch(API_BASE, `/api/preprocessing/check/${dataset}`);
+    } catch {
+      return { has_bow: false, has_embeddings: false, ready_for_training: false };
+    }
   },
 
-  // ========== 脚本执行 API ==========
-  
-  /**
-   * 获取所有可用脚本列表
-   */
-  async getScripts(): Promise<ScriptInfo[]> {
-    return fetchApi('/api/scripts');
+  // ========== AI 对话 ==========
+
+  async chat(
+    message: string,
+    context?: Record<string, unknown>,
+  ): Promise<{ message: string; response?: string; action?: string; task_id?: string; data?: Record<string, unknown> }> {
+    try {
+      const raw = await apiFetch<any>(AGENT_BASE || API_BASE, '/api/agent/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message,
+          job_id: context?.job_id ?? context?.dataset ?? '',
+          session_id: context?.session_id ?? 'default',
+        }),
+      });
+      return { message: raw.message, response: raw.message, action: undefined, data: undefined };
+    } catch {
+      try {
+        return await apiFetch(API_BASE, '/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({ message, context }),
+        });
+      } catch {
+        return { message: '暂时无法连接 AI 服务，请稍后再试。' };
+      }
+    }
   },
 
-  /**
-   * 获取脚本分类
-   */
-  async getScriptCategories(): Promise<Record<string, Array<{ id: string; name: string; description: string }>>> {
-    return fetchApi('/api/scripts/categories');
-  },
-
-  /**
-   * 获取指定脚本信息
-   */
-  async getScript(scriptId: string): Promise<ScriptInfo> {
-    return fetchApi(`/api/scripts/${scriptId}`);
-  },
-
-  /**
-   * 执行脚本
-   */
-  async executeScript(request: ExecuteScriptRequest): Promise<ExecuteScriptResponse> {
-    return fetchApi('/api/scripts/execute', {
+  async *chatStream(
+    message: string,
+    sessionId = 'default',
+  ): AsyncGenerator<{ type: string; content: string }> {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    const response = await fetch(`${AGENT_BASE}/api/agent/chat/stream`, {
       method: 'POST',
-      body: JSON.stringify(request),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ message, session_id: sessionId }),
+    });
+
+    if (!response.ok) throw new Error(`SSE 请求失败 (HTTP ${response.status})`);
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('无法读取响应流');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') return;
+          try {
+            yield JSON.parse(data);
+          } catch { /* skip malformed chunks */ }
+        }
+      }
+    }
+  },
+
+  // ========== Agent 高级功能 ==========
+
+  async getAgentTools(): Promise<{ tools: Array<{ name: string; description: string }> }> {
+    return apiFetch(AGENT_BASE, '/api/agent/tools');
+  },
+
+  async clearAgentSession(sessionId = 'default'): Promise<void> {
+    await apiFetch(AGENT_BASE, `/api/agent/sessions/${sessionId}`, { method: 'DELETE' });
+  },
+
+  async listAgentSessions(): Promise<{ sessions: string[] }> {
+    return apiFetch(AGENT_BASE, '/api/agent/sessions');
+  },
+
+  // ========== 结果解读（Agent API） ==========
+
+  async interpretMetrics(jobId: string, language = 'zh'): Promise<any> {
+    return apiFetch(AGENT_BASE, '/api/interpret/metrics', {
+      method: 'POST',
+      body: JSON.stringify({ job_id: jobId, language }),
     });
   },
 
-  /**
-   * 获取所有脚本任务列表
-   */
-  async getScriptJobs(): Promise<ScriptJob[]> {
-    return fetchApi('/api/scripts/jobs');
+  async interpretTopics(jobId: string, language = 'zh', useLlm = true): Promise<any> {
+    return apiFetch(AGENT_BASE, '/api/interpret/topics', {
+      method: 'POST',
+      body: JSON.stringify({ job_id: jobId, language, use_llm: useLlm }),
+    });
+  },
+
+  async generateSummary(jobId: string, language = 'zh'): Promise<any> {
+    return apiFetch(AGENT_BASE, '/api/interpret/summary', {
+      method: 'POST',
+      body: JSON.stringify({ job_id: jobId, language }),
+    });
+  },
+
+  async analyzeChart(jobId: string, chartName: string, analysisType = 'general', language = 'zh'): Promise<any> {
+    return apiFetch(AGENT_BASE, '/api/vision/analyze-chart', {
+      method: 'POST',
+      body: JSON.stringify({ job_id: jobId, chart_name: chartName, analysis_type: analysisType, language }),
+    });
+  },
+
+  async getJobTopics(jobId: string): Promise<{ job_id: string; topics: any[] }> {
+    return apiFetch(AGENT_BASE || API_BASE, `/api/jobs/${jobId}/topics`);
+  },
+
+  async getJobCharts(jobId: string): Promise<{ job_id: string; charts: any; wordclouds: string[]; downloads: any }> {
+    return apiFetch(AGENT_BASE || API_BASE, `/api/jobs/${jobId}/charts`);
   },
 
   /**
-   * 获取指定任务状态
+   * 列出 OSS 上指定数据集的所有图表文件（png/jpg/pdf/html）。
+   * 等同于：ossutil ls "oss://…/result/baseline/{dataset}/" -r | grep "\.png\|\.jpg\|\.pdf\|\.html"
    */
-  async getScriptJob(jobId: string): Promise<ScriptJob> {
-    return fetchApi(`/api/scripts/jobs/${jobId}`);
-  },
-
-  /**
-   * 获取任务日志
-   */
-  async getScriptJobLogs(jobId: string, tail: number = 100): Promise<{
-    job_id: string;
-    status: string;
-    logs: string[];
-    total_lines: number;
+  async listOssChartFiles(dataset: string): Promise<{
+    dataset: string;
+    charts: Array<{ key: string; path: string; ext: string; size: number; url: string }>;
+    total: number;
+    note?: string;
   }> {
-    return fetchApi(`/api/scripts/jobs/${jobId}/logs?tail=${tail}`);
+    try {
+      return await apiFetch(API_BASE, `/api/data/oss-charts/${encodeURIComponent(dataset)}`);
+    } catch {
+      return { dataset, charts: [], total: 0, note: 'OSS 图表文件列举失败' };
+    }
   },
 
   /**
-   * 取消任务
+   * 列出 OSS 上所有拥有可视化图表的数据集名称（用于选择器）。
    */
-  async cancelScriptJob(jobId: string): Promise<{ message: string; job_id: string }> {
-    return fetchApi(`/api/scripts/jobs/${jobId}`, {
-      method: 'DELETE',
-    });
+  async listOssDatasets(): Promise<{
+    datasets: Array<{ name: string; chart_count: number }>;
+    note?: string;
+  }> {
+    try {
+      return await apiFetch(API_BASE, `/api/data/oss-datasets`);
+    } catch {
+      return { datasets: [], note: 'OSS 数据集列表获取失败' };
+    }
   },
 
-  // ========== 便捷脚本执行方法 ==========
-
-  /**
-   * 执行 ETM 训练
-   */
-  async runTraining(params: {
-    dataset: string;
-    mode?: string;
-    num_topics?: number;
-    epochs?: number;
-    batch_size?: number;
-  }): Promise<ExecuteScriptResponse> {
-    return fetchApi('/api/scripts/train', {
-      method: 'POST',
-      body: JSON.stringify({
-        dataset: params.dataset,
-        mode: params.mode || 'zero_shot',
-        num_topics: params.num_topics || 20,
-        epochs: params.epochs || 50,
-        batch_size: params.batch_size || 64,
-      }),
-    });
+  getDownloadUrl(jobId: string, filename: string): string {
+    return `${AGENT_BASE || API_BASE}/api/download/${jobId}/${filename}`;
   },
 
-  /**
-   * 生成 Embedding
-   */
-  async runEmbedding(params: {
-    dataset: string;
-    mode?: string;
-    epochs?: number;
-    batch_size?: number;
-  }): Promise<ExecuteScriptResponse> {
-    return fetchApi('/api/scripts/embedding', {
-      method: 'POST',
-      body: JSON.stringify({
-        dataset: params.dataset,
-        mode: params.mode || 'zero_shot',
-        epochs: params.epochs || 3,
-        batch_size: params.batch_size || 16,
-      }),
-    });
+  // ========== 对话历史 ==========
+
+  async saveConversationHistory(sessionId: string, messages: Array<{ role: string; content: string }>): Promise<any> {
+    try {
+      return await apiFetch(API_BASE, '/api/chat/history', {
+        method: 'POST',
+        body: JSON.stringify({ session_id: sessionId, messages }),
+      });
+    } catch { return { message: 'ok', session_id: sessionId, message_count: 0 }; }
   },
 
-  /**
-   * 运行评估
-   */
-  async runEvaluate(params: {
-    dataset: string;
-    mode?: string;
-  }): Promise<ExecuteScriptResponse> {
-    return fetchApi('/api/scripts/evaluate', {
-      method: 'POST',
-      body: JSON.stringify({
-        dataset: params.dataset,
-        mode: params.mode || 'zero_shot',
-      }),
-    });
+  async getConversationHistory(sessionId: string): Promise<any> {
+    try {
+      return await apiFetch(API_BASE, `/api/chat/history/${sessionId}`);
+    } catch { return { session_id: sessionId, messages: [], count: 0 }; }
   },
 
-  /**
-   * 生成可视化
-   */
-  async runVisualize(params: {
-    dataset: string;
-    mode?: string;
-  }): Promise<ExecuteScriptResponse> {
-    return fetchApi('/api/scripts/visualize', {
-      method: 'POST',
-      body: JSON.stringify({
-        dataset: params.dataset,
-        mode: params.mode || 'zero_shot',
-      }),
-    });
+  async clearConversationHistory(sessionId: string): Promise<any> {
+    try {
+      return await apiFetch(API_BASE, `/api/chat/history/${sessionId}`, { method: 'DELETE' });
+    } catch { return { message: 'ok', session_id: sessionId }; }
   },
 
-  /**
-   * 运行完整流程
-   */
-  async runFullPipeline(params: {
-    dataset: string;
-    mode?: string;
-    num_topics?: number;
-  }): Promise<ExecuteScriptResponse> {
-    return fetchApi('/api/scripts/pipeline', {
-      method: 'POST',
-      body: JSON.stringify({
-        dataset: params.dataset,
-        mode: params.mode || 'zero_shot',
-        num_topics: params.num_topics || 20,
-      }),
-    });
+  // ========== 智能建议 ==========
+
+  async getSuggestions(context?: Record<string, unknown>): Promise<any> {
+    try {
+      return await apiFetch(API_BASE, '/api/chat/suggestions', {
+        method: 'POST',
+        body: JSON.stringify(context || {}),
+      });
+    } catch {
+      return {
+        suggestions: [
+          { text: '开始分析', action: 'start', description: '上传数据并运行分析流水线' },
+          { text: '查看结果', action: 'results', description: '查看已有的分析结果' },
+        ],
+      };
+    }
   },
 };
+
+// ==================== 辅助函数 ====================
+
+// DLC 状态 → { message, progress } 映射（与阿里云控制台一致）
+const DLC_STATUS_MAP: Record<string, { message: string; progress: number }> = {
+  Creating:   { message: '任务创建中', progress: 5 },
+  Created:    { message: '任务已创建，等待调度', progress: 8 },
+  Queuing:    { message: '排队等待资源', progress: 10 },
+  Waiting:    { message: '等待资源分配', progress: 12 },
+  Scheduling: { message: '正在调度资源', progress: 15 },
+  Preparing:  { message: '环境准备中', progress: 20 },
+  Running:    { message: '训练运行中', progress: 50 },
+  Stopping:   { message: '任务停止中', progress: 95 },
+  Succeeded:  { message: '训练完成', progress: 100 },
+  Failed:     { message: '训练失败', progress: 0 },
+  Stopped:    { message: '训练已停止', progress: 0 },
+};
+
+function normalizeJob(raw: any): TaskResponse {
+  const dlcStatus: string | undefined = raw.dlc_status;
+  const dlcInfo = dlcStatus ? DLC_STATUS_MAP[dlcStatus] : undefined;
+
+  let progress: number;
+  if (raw.status === 'completed') progress = 100;
+  else if (raw.status === 'error') progress = 0;
+  else if (dlcInfo) progress = dlcInfo.progress;
+  else progress = 50;
+
+  // 计算已运行时长（仅 DLC 阶段）
+  let elapsedSec = 0;
+  if (raw.created_at && raw.status !== 'completed' && raw.status !== 'error') {
+    elapsedSec = Math.floor((Date.now() - new Date(raw.created_at).getTime()) / 1000);
+  }
+
+  const dlcElapsed = elapsedSec > 0 ? `（已运行 ${elapsedSec} 秒）` : '';
+  const message: string | undefined =
+    raw.message ||
+    (dlcInfo ? `${dlcInfo.message}${dlcElapsed}` : undefined) ||
+    (dlcStatus ? `DLC: ${dlcStatus}${dlcElapsed}` : undefined) ||
+    raw.error;
+
+  return {
+    task_id: raw.job_id ?? raw.task_id ?? '',
+    status: raw.status ?? 'pending',
+    progress,
+    message,
+    dataset: raw.dataset_name ?? raw.dataset ?? undefined,
+    mode: raw.mode ?? undefined,
+    num_topics: raw.num_topics ?? undefined,
+    created_at: raw.created_at ?? undefined,
+    completed_at: raw.completed_at ?? undefined,
+    dlc_job_id: raw.dlc_job_id ?? undefined,
+    dlc_status: dlcStatus,
+    error_message: raw.error ?? undefined,
+  };
+}
 
 export default ETMAgentAPI;

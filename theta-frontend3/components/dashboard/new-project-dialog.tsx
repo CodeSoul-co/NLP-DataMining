@@ -24,7 +24,7 @@ export interface NewProjectData {
 interface NewProjectDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (data: NewProjectData) => void
+  onSubmit: (data: NewProjectData) => Promise<void> | void
 }
 
 // ==================== 组件 ====================
@@ -48,16 +48,21 @@ export function NewProjectDialog({
     onOpenChange(isOpen)
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
       setError("请输入项目名称")
       return
     }
 
     setLoading(true)
-    onSubmit({ name: name.trim() })
-    setLoading(false)
-    handleOpenChange(false)
+    try {
+      await onSubmit({ name: name.trim() })
+      handleOpenChange(false)
+    } catch {
+      setError("创建失败，请稍后重试")
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

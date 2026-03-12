@@ -120,26 +120,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[Auth] 用户状态已更新，isAuthenticated:', !!userData);
       
     } catch (error) {
-      console.error('[Auth] 登录失败:', error);
-      // 确保清理状态
+      // 用户名/密码错误是预期行为，不打印到控制台；仅记录意外错误
+      const msg = error instanceof Error ? error.message : String(error);
+      const isCredentialError = /用户名|密码|401|Incorrect|Unauthorized/i.test(msg);
+      if (!isCredentialError) {
+        console.error('[Auth] 登录失败:', error);
+      }
       AuthAPI.logout();
       setUser(null);
-      // 重新抛出错误，让调用方处理
       throw error;
     }
   };
 
-  const register = async (username: string, email: string, password: string, fullName?: string) => {
-    await AuthAPI.register({ username, email, password, full_name: fullName });
-    // After registration, login automatically
-    await login(username, password, false);
+  const register = async (_username: string, _email: string, _password: string, _fullName?: string) => {
+    throw new Error('暂不支持注册，请联系管理员获取账号');
   };
 
   const logout = useCallback(() => {
     AuthAPI.logout();
     localStorage.removeItem('remember_me');
     setUser(null);
-    router.push('/login');
+    router.push('/');
   }, [router]);
 
   const updateProfile = async (data: ProfileUpdateRequest) => {

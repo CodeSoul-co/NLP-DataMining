@@ -22,14 +22,14 @@ class PAIDLCService:
         if self.enabled:
             from alibabacloud_pai_dlc20201203.client import Client as DLCClient
             from alibabacloud_tea_openapi import models as open_api_models
-            from alibabacloud_credentials import providers
             
+            region = settings.RESOLVED_REGION
             config = open_api_models.Config(
-                access_key_id=settings.PAI_ACCESS_KEY_ID,
-                access_key_secret=settings.PAI_ACCESS_KEY_SECRET,
-                region_id=settings.PAI_REGION
+                access_key_id=settings.CLOUD_ACCESS_KEY_ID,
+                access_key_secret=settings.CLOUD_ACCESS_KEY_SECRET,
+                region_id=region
             )
-            config.endpoint = f"pai-dlc.{settings.PAI_REGION}.aliyuncs.com"
+            config.endpoint = f"pai-dlc.{region}.aliyuncs.com"
             self.client = DLCClient(config)
             logger.info("PAI-DLC client initialized")
         else:
@@ -84,37 +84,38 @@ python /app/ETM/train_etm.py \\
         # Create job request
         request = dlc_models.CreateJobRequest(
             display_name=f"theta-etm-{task_id[:8]}",
-            job_type="TFJob",
+            job_type="PyTorchJob",
             resource_id=settings.PAI_RESOURCE_GROUP_ID,
             job_specs=[
                 dlc_models.JobSpec(
                     type="Worker",
                     image=settings.PAI_TRAINING_IMAGE,
                     pod_count=1,
-                    resource_config=dlc_models.ResourceConfig(
-                        cpu="4",
-                        memory="16Gi",
-                        gpu="1",
-                        gpu_type="V100"
-                    ),
+                    ecs_spec=settings.DLC_INSTANCE_TYPE,
                     envs=[
                         dlc_models.EnvVar(name="TASK_ID", value=task_id),
-                        dlc_models.EnvVar(name="OSS_ENDPOINT", value=settings.OSS_ENDPOINT),
+                        dlc_models.EnvVar(name="OSS_ENDPOINT", value=settings.OSS_ENDPOINT or ""),
                     ]
                 )
             ],
             user_command=command,
             data_sources=[
                 dlc_models.DataSourceItem(
+                    data_source_type="Dataset",
+                    data_source_id=settings.OSS_DATASET_ID,
+                    mount_path="/mnt"
+                )
+            ] if settings.OSS_DATASET_ID else [
+                dlc_models.DataSourceItem(
                     data_source_type="OSS",
                     mount_path="/data",
-                    uri=f"oss://{settings.OSS_BUCKET_NAME}/"
+                    uri=f"oss://{settings.RESOLVED_OSS_BUCKET}/"
                 )
             ]
         )
         
         try:
-            response = self.client.create_job(settings.PAI_WORKSPACE_ID, request)
+            response = self.client.create_job(settings.RESOLVED_WORKSPACE_ID, request)
             job_id = response.body.job_id
             logger.info(f"Training job submitted: {job_id}")
             return {
@@ -140,7 +141,7 @@ python /app/ETM/train_etm.py \\
         
         try:
             request = dlc_models.GetJobRequest()
-            response = self.client.get_job(settings.PAI_WORKSPACE_ID, job_id, request)
+            response = self.client.get_job(settings.RESOLVED_WORKSPACE_ID, job_id, request)
             job = response.body
             
             # Map PAI status to our status
@@ -175,7 +176,7 @@ python /app/ETM/train_etm.py \\
         
         try:
             request = dlc_models.StopJobRequest()
-            self.client.stop_job(settings.PAI_WORKSPACE_ID, job_id, request)
+            self.client.stop_job(settings.RESOLVED_WORKSPACE_ID, job_id, request)
             logger.info(f"Job cancelled: {job_id}")
             return True
         except Exception as e:

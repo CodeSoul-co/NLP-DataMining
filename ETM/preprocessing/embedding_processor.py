@@ -23,6 +23,63 @@ from enum import Enum
 import pandas as pd
 from tqdm import tqdm
 
+# 常见 CSV 编码（中文常用 GBK）
+_CSV_ENCODINGS = ['utf-8', 'utf-8-sig', 'gbk', 'gb2312', 'gb18030', 'latin-1']
+
+
+def read_csv_auto_encoding(csv_path: str, **kwargs) -> pd.DataFrame:
+    """
+    兼容多种编码和格式的 CSV 读取：
+    - 编码：utf-8, gbk 等
+    - 分隔符：sep=None 自动检测（逗号/制表符/分号）
+    - 容错：engine='python' 且跳过格式异常的行，避免 "Expected N fields, saw M" 报错
+    - NUL 字节自动剥离：部分 CSV 由 Excel 导出带有 \\x00，读取前过滤
+    """
+    import io, tempfile, shutil
+
+    # 首先检查文件是否含有 NUL 字节；如含有则生成去除 NUL 的临时文件
+    def _strip_nul(path: str) -> Tuple[str, bool]:
+        """若文件含 NUL 字节，写入临时文件并返回(临时路径, True)，否则返回(原路径, False)"""
+        with open(path, 'rb') as f:
+            raw = f.read()
+        if b'\x00' not in raw:
+            return path, False
+        cleaned = raw.replace(b'\x00', b'')
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
+        tmp.write(cleaned)
+        tmp.close()
+        return tmp.name, True
+
+    actual_path, is_tmp = _strip_nul(csv_path)
+    try:
+        return _read_csv_inner(actual_path, **kwargs)
+    finally:
+        if is_tmp:
+            try:
+                os.unlink(actual_path)
+            except Exception:
+                pass
+
+
+def _read_csv_inner(csv_path: str, **kwargs) -> pd.DataFrame:
+    read_opts = dict(sep=None, engine='python', **kwargs)
+    if pd.__version__ >= '1.3':
+        read_opts['on_bad_lines'] = 'skip'
+    else:
+        read_opts['error_bad_lines'] = False
+    last_err = None
+    for enc in _CSV_ENCODINGS:
+        try:
+            return pd.read_csv(csv_path, encoding=enc, **read_opts)
+        except (UnicodeDecodeError, UnicodeError) as e:
+            last_err = e
+            continue
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err or ValueError('Unable to read CSV with common encodings')
+
+
 # Optional imports
 try:
     import torch
@@ -594,7 +651,7 @@ class EmbeddingProcessor:
             
             # Load data
             self._report_progress("load", 0.0, f"Loading data from {csv_path}")
-            df = pd.read_csv(csv_path)
+            df = read_csv_auto_encoding(csv_path)
             
             if text_column not in df.columns:
                 raise ValueError(f"Column '{text_column}' not found in CSV. Available: {list(df.columns)}")

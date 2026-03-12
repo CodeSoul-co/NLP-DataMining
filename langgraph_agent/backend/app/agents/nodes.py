@@ -42,6 +42,56 @@ def _add_log(state: AgentState, step: str, status: str, message: str, **kwargs) 
     return {"logs": logs}
 
 
+def _generate_topic_word_importance(viz_dir: Path, topic_words, beta: Optional[np.ndarray] = None) -> None:
+    """Generate per-topic word_importance.png in topics/topic_N/ for dashboard 词权重图.
+    topic_words: list of (topic_id, [(word, weight), ...]) or dict {str: [word, ...]}
+    beta: numpy array (optional, used when topic_words from model files)
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        logger.warning("matplotlib not available, skipping per-topic word importance")
+        return
+    topics_dir = viz_dir / "topics"
+    topics_dir.mkdir(parents=True, exist_ok=True)
+    # Support dict format from task_store: {"0": ["w1","w2"], "1": [...]}
+    if isinstance(topic_words, dict):
+        items = sorted(topic_words.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+        topic_words_list = [(int(k), [(w, 1.0 - i * 0.05) for i, w in enumerate(v[:15])]) for k, v in items]
+        n_topics = len(topic_words_list)
+        beta = None
+    else:
+        topic_words_list = topic_words
+        n_topics = len(topic_words_list) if topic_words_list else (beta.shape[0] if beta is not None else 0)
+    for topic_idx in range(n_topics):
+        topic_dir = topics_dir / f"topic_{topic_idx}"
+        topic_dir.mkdir(parents=True, exist_ok=True)
+        if topic_idx < len(topic_words_list) and topic_words_list[topic_idx][1]:
+            words_weights = topic_words_list[topic_idx][1][:15]
+        elif beta is not None and topic_idx < beta.shape[0]:
+            top_indices = np.argsort(beta[topic_idx])[-15:][::-1]
+            words_weights = [(f"word_{i}", float(beta[topic_idx, i])) for i in top_indices]
+        else:
+            words_weights = [("—", 0.5)]
+        words = [w[0] for w in words_weights]
+        weights = [float(w[1]) for w in words_weights]
+        fig, ax = plt.subplots(figsize=(10, 8))
+        y_pos = range(len(words))
+        ax.barh(y_pos, weights, color="steelblue", alpha=0.8)
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(words, fontsize=10)
+        ax.invert_yaxis()
+        ax.set_xlabel("Weight")
+        ax.set_title(f"Topic {topic_idx + 1} 词重要性")
+        ax.grid(True, axis="x", alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(topic_dir / "word_importance.png", dpi=150, bbox_inches="tight", facecolor="white")
+        plt.close()
+    logger.info(f"Generated {n_topics} per-topic word_importance.png")
+
+
 async def preprocess_node(state: AgentState, callback: Optional[Callable] = None) -> Dict[str, Any]:
     """
     Node 1: Preprocessor
@@ -55,8 +105,8 @@ async def preprocess_node(state: AgentState, callback: Optional[Callable] = None
         from bow.vocab_builder import VocabBuilder
         from bow.bow_generator import BOWGenerator
         from model.vocab_embedder import VocabEmbedder
-        import pandas as pd
-        
+        from ETM.preprocessing import read_csv_auto_encoding
+
         dataset = state["dataset"]
         mode = state["mode"]
         
@@ -77,8 +127,8 @@ async def preprocess_node(state: AgentState, callback: Optional[Callable] = None
         if callback:
             await callback(step_name, "in_progress", f"Loading data from {csv_path}")
         
-        df = pd.read_csv(csv_path)
-        
+        df = read_csv_auto_encoding(csv_path)
+
         text_col = None
         for col in ['cleaned_content', 'clean_text', 'text', 'content', 'Text']:
             if col in df.columns:
@@ -606,6 +656,11 @@ async def visualization_node(state: AgentState, callback: Optional[Callable] = N
         )
         visualization_paths.append(str(viz_dir / f"topic_proportions_{prefix}.png"))
         
+        # Per-topic word importance (topics/topic_0/word_importance.png, ...) for dashboard 词权重图
+        if callback:
+            await callback(step_name, "in_progress", "Generating per-topic word importance")
+        _generate_topic_word_importance(viz_dir, results['topic_words'], results['beta'])
+        
         if callback:
             await callback(step_name, "in_progress", "Generating interactive pyLDAvis")
         
@@ -638,9 +693,9 @@ async def visualization_node(state: AgentState, callback: Optional[Callable] = N
         csv_files = list(data_dir.glob("*.csv"))
         
         if csv_files:
-            import pandas as pd
+            from ETM.preprocessing import read_csv_auto_encoding
             try:
-                df = pd.read_csv(csv_files[0])
+                df = read_csv_auto_encoding(str(csv_files[0]))
                 # Check for timestamp column
                 time_cols = [c for c in df.columns if any(t in c.lower() for t in ['time', 'date', 'year', '时间', '日期', '年份'])]
                 
@@ -685,8 +740,9 @@ async def visualization_node(state: AgentState, callback: Optional[Callable] = N
         
         dimension_data = None
         if csv_files:
+            from ETM.preprocessing import read_csv_auto_encoding
             try:
-                df = pd.read_csv(csv_files[0])
+                df = read_csv_auto_encoding(str(csv_files[0]))
                 # Check for dimension column (region, province, category, etc.)
                 dim_cols = [c for c in df.columns if any(d in c.lower() for d in ['region', 'province', 'city', 'category', 'type', '省', '市', '地区', '类型', '部门'])]
                 

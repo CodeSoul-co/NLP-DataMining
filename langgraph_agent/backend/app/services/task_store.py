@@ -1,6 +1,6 @@
 """
 Task Store - 任务持久化存储
-支持 JSON 文件持久化，确保服务器重启后任务不丢失
+支持 JSON 文件 + PostgreSQL 双写，确保服务器重启后任务不丢失
 """
 
 import json
@@ -15,6 +15,96 @@ from ..core.config import settings
 from ..core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _sync_task_to_db(task: Dict[str, Any]) -> None:
+    """
+    将单个 task 同步写入 PostgreSQL（在后台线程安全地执行）。
+    使用 upsert 语义：已存在则更新，不存在则插入。
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(_async_sync_task_to_db(task))
+        else:
+            asyncio.run(_async_sync_task_to_db(task))
+    except RuntimeError:
+        # 没有事件循环，新建一个
+        try:
+            asyncio.run(_async_sync_task_to_db(task))
+        except Exception as e:
+            logger.debug(f"DB sync skipped (no event loop): {e}")
+
+
+async def _async_sync_task_to_db(task: Dict[str, Any]) -> None:
+    """异步把 task dict 写入 tasks 表"""
+    try:
+        from ..core.database import async_session_maker
+        from ..models.task import Task, TaskStatus
+
+        task_id = task.get("task_id")
+        if not task_id:
+            return
+
+        status_map = {
+            "pending": TaskStatus.PENDING,
+            "preprocessing": TaskStatus.PREPROCESSING,
+            "running": TaskStatus.TRAINING,
+            "training": TaskStatus.TRAINING,
+            "completed": TaskStatus.COMPLETED,
+            "failed": TaskStatus.FAILED,
+            "error": TaskStatus.FAILED,
+            "cancelled": TaskStatus.CANCELLED,
+        }
+
+        from sqlalchemy import select
+        async with async_session_maker() as session:
+            result = await session.execute(select(Task).where(Task.id == task_id))
+            db_task = result.scalar_one_or_none()
+
+            if db_task is None:
+                db_task = Task(
+                    id=task_id,
+                    user_id=task.get("user_id", 1),
+                    dataset_name=task.get("dataset", "unknown"),
+                )
+                session.add(db_task)
+
+            # 更新字段
+            raw_status = task.get("status", "pending")
+            db_task.status = status_map.get(raw_status, TaskStatus.PENDING)
+            db_task.progress = task.get("progress", 0)
+            db_task.current_step = task.get("current_step")
+            db_task.error_message = task.get("error_message")
+            db_task.pai_job_id = task.get("dlc_job_id")
+            db_task.pai_job_status = task.get("dlc_status")
+
+            config = {}
+            for k in ("mode", "num_topics", "epochs", "model_size", "models", "batch_size",
+                       "learning_rate", "hidden_dim", "vocab_size"):
+                if task.get(k) is not None:
+                    config[k] = task[k]
+            if config:
+                db_task.config = config
+
+            result_data = {}
+            if task.get("oss_result_urls"):
+                result_data["oss_result_urls"] = task["oss_result_urls"]
+            if task.get("message"):
+                result_data["message"] = task["message"]
+            if result_data:
+                db_task.result = result_data
+
+            if task.get("completed_at"):
+                try:
+                    db_task.completed_at = datetime.fromisoformat(task["completed_at"])
+                except (ValueError, TypeError):
+                    pass
+
+            db_task.updated_at = datetime.utcnow()
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"DB sync failed for task {task.get('task_id')}: {e}")
 
 
 class TaskStore:
@@ -73,6 +163,8 @@ class TaskStore:
             self._tasks[task_id] = task
             self._save_tasks()
             logger.info(f"Created task: {task_id}")
+            # 同步写入 PostgreSQL
+            _sync_task_to_db(task)
             return task
     
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -85,25 +177,26 @@ class TaskStore:
         with self._lock:
             return self._tasks.copy()
     
-    def get_tasks_list(self, 
-                       status: Optional[str] = None, 
+    def get_tasks_list(self,
+                       user_id: Optional[int] = None,
+                       status: Optional[str] = None,
                        dataset: Optional[str] = None,
                        limit: int = 100,
                        offset: int = 0) -> List[Dict[str, Any]]:
-        """获取任务列表，支持过滤和分页"""
+        """获取任务列表，支持按用户、状态、数据集过滤和分页"""
         with self._lock:
             tasks = list(self._tasks.values())
-            
-            # 按创建时间倒序
-            tasks.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-            
-            # 过滤
+            if user_id is not None:
+                tasks = [
+                    t for t in tasks
+                    if t.get("user_id") == user_id
+                    or (t.get("user_id") is None and user_id == 1)  # legacy tasks -> user 1
+                ]
             if status:
                 tasks = [t for t in tasks if t.get("status") == status]
             if dataset:
                 tasks = [t for t in tasks if t.get("dataset") == dataset]
-            
-            # 分页
+            tasks.sort(key=lambda x: x.get("created_at", ""), reverse=True)
             return tasks[offset:offset + limit]
     
     def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -115,6 +208,8 @@ class TaskStore:
             self._tasks[task_id].update(updates)
             self._tasks[task_id]["updated_at"] = datetime.now().isoformat()
             self._save_tasks()
+            # 同步写入 PostgreSQL
+            _sync_task_to_db(self._tasks[task_id])
             return self._tasks[task_id]
     
     def update_progress(self, task_id: str, progress: float, 
@@ -225,6 +320,44 @@ class TaskStore:
                 if status in stats:
                     stats[status] += 1
             return stats
+
+    async def load_from_db(self) -> int:
+        """从 PostgreSQL 加载任务到内存缓存（服务启动时调用，恢复 JSON 中缺失的数据）"""
+        loaded = 0
+        try:
+            from ..core.database import async_session_maker
+            from ..models.task import Task
+            from sqlalchemy import select
+
+            async with async_session_maker() as session:
+                result = await session.execute(select(Task))
+                db_tasks = result.scalars().all()
+                with self._lock:
+                    for dt in db_tasks:
+                        if dt.id not in self._tasks:
+                            self._tasks[dt.id] = {
+                                "task_id": dt.id,
+                                "user_id": dt.user_id,
+                                "dataset": dt.dataset_name,
+                                "status": dt.status.value if dt.status else "pending",
+                                "progress": dt.progress or 0,
+                                "current_step": dt.current_step,
+                                "error_message": dt.error_message,
+                                "dlc_job_id": dt.pai_job_id,
+                                "dlc_status": dt.pai_job_status,
+                                "created_at": dt.created_at.isoformat() if dt.created_at else None,
+                                "updated_at": dt.updated_at.isoformat() if dt.updated_at else None,
+                                "completed_at": dt.completed_at.isoformat() if dt.completed_at else None,
+                                **(dt.config or {}),
+                                **(dt.result or {}),
+                            }
+                            loaded += 1
+                    if loaded:
+                        self._save_tasks()
+            logger.info(f"Loaded {loaded} tasks from database (total in memory: {len(self._tasks)})")
+        except Exception as e:
+            logger.warning(f"Failed to load tasks from database: {e}")
+        return loaded
 
 
 # 全局单例

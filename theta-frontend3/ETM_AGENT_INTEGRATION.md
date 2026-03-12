@@ -4,7 +4,7 @@
 
 已成功将 THETA_wait 中的 LangGraph Agent 前端功能集成到 Next.js 项目中。集成的功能包括：
 
-1. **训练任务管理** (`/app/training`) - 通过对话或表单创建和管理 ETM 训练任务
+1. **工作台** (`/dashboard`) - 项目中心与训练流程（原 `/training` 已废弃）
 2. **结果查看** (`/app/results`) - 查看训练结果、评估指标和主题词
 3. **可视化展示** (`/app/visualizations`) - 查看训练结果的可视化图表
 
@@ -17,7 +17,7 @@
 - `hooks/use-etm-websocket.ts` - WebSocket hook，用于实时接收训练进度更新
 
 ### 页面组件
-- `app/training/page.tsx` - 训练任务管理页面
+- `app/dashboard/page.tsx` - 工作台（项目中心 + 训练流程）
 - `app/results/page.tsx` - 结果查看页面
 - `app/visualizations/page.tsx` - 可视化展示页面
 
@@ -55,7 +55,7 @@ python run.py --port 8000
 
 ### 1. 训练任务管理页面
 
-访问路径：`http://localhost:3000/training`
+访问路径：`http://localhost:3000/dashboard`
 
 功能：
 - **对话式创建任务**：输入自然语言命令，例如：
@@ -166,7 +166,7 @@ import Link from 'next/link'
   label="训练任务"
   onClick={() => {}}
   as={Link}
-  href="/training"
+  href="/dashboard"
 />
 ```
 

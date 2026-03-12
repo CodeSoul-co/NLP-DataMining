@@ -1,11 +1,17 @@
 /**
  * Authentication API Client
+ * 适配 theta_1-main/api 后端认证接口
+ *
+ * 后端端点：
+ *   POST /api/auth/login   → {access_token, token_type, expires_in, user: {username, role, created_at}}
+ *   POST /api/auth/logout
+ *   GET  /api/auth/me       → {username, role, expires_at}
+ *   POST /api/auth/verify   → {valid, username, role, expires_at}
  */
 
-// 如果设置为空字符串，使用相对路径（通过 nginx 路由）
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL !== undefined 
-  ? process.env.NEXT_PUBLIC_API_URL 
-  : 'http://localhost:8000';
+import { apiFetch, API_BASE } from './config';
+
+// ==================== 类型定义 ====================
 
 export interface User {
   id: number;
@@ -14,6 +20,7 @@ export interface User {
   full_name?: string;
   created_at: string;
   is_active: boolean;
+  role?: string;
 }
 
 export interface Token {
@@ -21,13 +28,6 @@ export interface Token {
   token_type: string;
   expires_in: number;
   user?: User;
-}
-
-export interface RegisterRequest {
-  username: string;
-  email: string;
-  password: string;
-  full_name?: string;
 }
 
 export interface LoginRequest {
@@ -45,168 +45,128 @@ export interface PasswordChangeRequest {
   new_password: string;
 }
 
-const DEFAULT_TIMEOUT_MS = 15000; // 15 秒，避免登录一直转圈
-
-async function fetchApi<T>(endpoint: string, options?: RequestInit & { timeoutMs?: number }): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchOptions } = options ?? {};
-
-  const token = localStorage.getItem('access_token');
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...fetchOptions.headers,
+/** 将后端返回的用户/token 信息归一化为前端 User 格式 */
+function normalizeUser(raw: any, fallbackUsername = 'unknown'): User {
+  return {
+    id: raw.id ?? 0,
+    username: raw.username ?? fallbackUsername,
+    email: raw.email ?? '',
+    full_name: raw.full_name ?? raw.username ?? fallbackUsername,
+    created_at: raw.created_at ?? raw.expires_at ?? '',
+    is_active: raw.is_active ?? true,
+    role: raw.role ?? 'user',
   };
-
-  if (token) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...fetchOptions,
-      headers,
-      signal: controller.signal,
-    });
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    if (error?.name === 'AbortError') {
-      throw new Error('连接超时，请检查后端服务是否已启动（如 http://localhost:8000）及网络连接。');
-    }
-    const errorMessage = error?.message || 'Network error';
-    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-      throw new Error('无法连接到服务器。请检查后端是否在本地运行（如 ./start.sh）及网络连接。');
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      // Token expired or invalid
-      // 只有在非登录/注册接口时才跳转到登录页
-      // 登录接口返回 401 是正常的（用户名密码错误），不应该跳转
-      const isAuthEndpoint = endpoint.includes('/auth/login') || endpoint.includes('/auth/register');
-      if (!isAuthEndpoint) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('user');
-        // 使用 setTimeout 避免在错误处理过程中跳转
-        setTimeout(() => {
-          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
-        }, 0);
-      }
-      const error = await response.json().catch(() => ({ detail: 'Unauthorized' }));
-      throw new Error(error.detail || 'Unauthorized');
-    }
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
-  }
-
-  return response.json();
 }
+
+// ==================== API ====================
 
 export const AuthAPI = {
   /**
-   * Register a new user
-   */
-  async register(data: RegisterRequest): Promise<User> {
-    return fetchApi<User>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
-   * Login and get access token
+   * 登录
+   * langgraph_agent: POST /api/auth/login-json  body: {username, password} (JSON)
+   * theta_1-main:     POST /api/auth/login      body: {username, password} (JSON)
    */
   async login(data: LoginRequest): Promise<Token> {
-    return fetchApi<Token>('/api/auth/login-json', {
-      method: 'POST',
-      body: JSON.stringify(data),
-      timeoutMs: 12000, // 登录接口 12 秒超时，避免一直转圈
-    });
+    const body = JSON.stringify(data);
+    const opts = { method: 'POST' as const, body, timeoutMs: 12_000 };
+    let raw: any;
+    try {
+      raw = await apiFetch<any>(API_BASE, '/api/auth/login-json', opts);
+    } catch (e: any) {
+      if (e?.message?.includes('404') || e?.message?.includes('Not Found')) {
+        raw = await apiFetch<any>(API_BASE, '/api/auth/login', opts);
+      } else {
+        throw e;
+      }
+    }
+
+    const user: User = raw.user
+      ? normalizeUser(raw.user, data.username)
+      : normalizeUser({ username: data.username });
+
+    return {
+      access_token: raw.access_token,
+      token_type: raw.token_type ?? 'bearer',
+      expires_in: raw.expires_in ?? 86400,
+      user,
+    };
   },
 
   /**
-   * Get current user information
+   * 获取当前用户信息
+   * GET /api/auth/me → {username, role, expires_at}
    */
   async getCurrentUser(): Promise<User> {
-    return fetchApi<User>('/api/auth/me');
+    const raw = await apiFetch<any>(API_BASE, '/api/auth/me');
+    return normalizeUser(raw);
   },
 
   /**
-   * Verify token
+   * 验证 Token
+   * POST /api/auth/verify  body: token string
    */
   async verifyToken(): Promise<{ valid: boolean; username: string; user_id: number }> {
-    return fetchApi('/api/auth/verify');
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return { valid: false, username: '', user_id: 0 };
+
+      const raw = await apiFetch<any>(API_BASE, '/api/auth/verify', {
+        method: 'POST',
+        body: JSON.stringify(token),
+      });
+      return {
+        valid: raw.valid ?? true,
+        username: raw.username ?? '',
+        user_id: raw.user_id ?? 0,
+      };
+    } catch {
+      try {
+        const user = await this.getCurrentUser();
+        return { valid: true, username: user.username, user_id: 0 };
+      } catch {
+        return { valid: false, username: '', user_id: 0 };
+      }
+    }
   },
 
-  /**
-   * Logout (clear local storage)
-   */
-  logout(): void {
+  async logout(): Promise<void> {
+    try {
+      await apiFetch(API_BASE, '/api/auth/logout', { method: 'POST' });
+    } catch {
+      // 忽略后端登出失败
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
   },
 
-  /**
-   * Check if user is authenticated
-   */
   isAuthenticated(): boolean {
     return !!localStorage.getItem('access_token');
   },
 
-  /**
-   * Get stored token
-   */
   getToken(): string | null {
     return localStorage.getItem('access_token');
   },
 
-  /**
-   * Store token and user info
-   */
   setAuth(token: string, user: User): void {
     localStorage.setItem('access_token', token);
     localStorage.setItem('user', JSON.stringify(user));
   },
 
-  /**
-   * Get stored user info
-   */
   getStoredUser(): User | null {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      try {
-        return JSON.parse(userStr);
-      } catch {
-        return null;
-      }
-    }
-    return null;
+    const s = localStorage.getItem('user');
+    if (!s) return null;
+    try { return JSON.parse(s); } catch { return null; }
   },
 
-  /**
-   * Update user profile
-   */
   async updateProfile(data: ProfileUpdateRequest): Promise<User> {
-    return fetchApi<User>('/api/auth/profile', {
+    return apiFetch<User>(API_BASE, '/api/auth/profile', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
 
-  /**
-   * Change password
-   */
   async changePassword(data: PasswordChangeRequest): Promise<{ message: string }> {
-    return fetchApi<{ message: string }>('/api/auth/change-password', {
+    return apiFetch(API_BASE, '/api/auth/change-password', {
       method: 'POST',
       body: JSON.stringify(data),
     });

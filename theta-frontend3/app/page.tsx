@@ -322,7 +322,7 @@ export default function LandingPage() {
   }, [authLoading])
   const showContent = !authLoading || authLoadTimeout
 
-  if (typeof window !== "undefined" && !showContent) {
+  if (!showContent) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -377,13 +377,16 @@ export default function LandingPage() {
               { label: "首页", href: "#" },
               { label: "关于THETA", href: "#core-features" },
               { label: "案例库", href: "/cases" },
-              { label: "文档", href: "#docs" },
+              { label: "文档", href: "https://codesoul-co.github.io/THETA", external: true },
               { label: "团队成员", href: "/team" },
               { label: "帮助中心", href: "#faq" },
             ].map((link) => (
               <a
                 key={link.label}
                 href={link.href}
+                {...("external" in link && link.external
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
                 className="nav-link text-[13px] sm:text-sm"
               >
                 {link.label}
@@ -1177,7 +1180,7 @@ export default function LandingPage() {
               <h4 className="text-sm font-semibold text-slate-900 mb-3">产品</h4>
               <ul className="space-y-2 text-sm text-slate-600">
                 <li><a href="#changelog" className="hover:text-blue-600">功能更新日志</a></li>
-                <li><a href="#api-docs" className="hover:text-blue-600">API 文档</a></li>
+                <li><a href="https://codesoul-co.github.io/THETA" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600">API 文档</a></li>
                 <li><Link href="/cases" className="hover:text-blue-600">案例库</Link></li>
               </ul>
             </div>

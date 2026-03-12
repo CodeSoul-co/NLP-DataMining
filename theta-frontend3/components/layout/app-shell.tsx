@@ -4,7 +4,7 @@ import React, { useState, useRef, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Settings, X, LogOut, User, Activity, LayoutDashboard, FileText, BarChart3, FolderOpen, PanelRightClose, PanelRightOpen, Sparkles } from "lucide-react"
+import { Settings, X, LogOut, User, Activity, LayoutDashboard, FolderOpen, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { AiSidebar, type ChatMessage } from "@/components/chat/ai-sidebar"
+import { AiSidebar, type ChatMessage, type SuggestionCard } from "@/components/chat/ai-sidebar"
 import { useAuth } from "@/contexts/auth-context"
 import { ReactNode } from "react"
 
@@ -36,6 +36,7 @@ interface AppShellProps {
   onDataUploaded?: (file: File) => void
   onFocusChart?: (chartId: string) => void
   onClearChat?: () => void
+  dynamicSuggestions?: SuggestionCard[]
 }
 
 export function AppShell({
@@ -49,6 +50,7 @@ export function AppShell({
   onDataUploaded,
   onFocusChart,
   onClearChat,
+  dynamicSuggestions,
 }: AppShellProps) {
   const router = useRouter()
   const { user, logout } = useAuth()
@@ -106,22 +108,10 @@ export function AppShell({
 
         {/* Center: Quick Navigation */}
         <div className="hidden md:flex items-center gap-1 flex-shrink-0">
-          <Link href="/training">
+          <Link href="/dashboard">
             <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 hover:bg-slate-100/80 rounded-lg h-8 px-3 text-xs font-medium">
               <LayoutDashboard className="h-3.5 w-3.5 mr-1.5" />
-              训练
-            </Button>
-          </Link>
-          <Link href="/results">
-            <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 hover:bg-slate-100/80 rounded-lg h-8 px-3 text-xs font-medium">
-              <FileText className="h-3.5 w-3.5 mr-1.5" />
-              结果
-            </Button>
-          </Link>
-          <Link href="/visualizations">
-            <Button variant="ghost" size="sm" className="text-slate-500 hover:text-slate-700 hover:bg-slate-100/80 rounded-lg h-8 px-3 text-xs font-medium">
-              <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-              可视化
+              工作台
             </Button>
           </Link>
         </div>
@@ -247,6 +237,7 @@ export function AppShell({
                 onFocusChart={onFocusChart}
                 onClearChat={onClearChat}
                 onCollapse={() => setShowAiSidebar(false)}
+                dynamicSuggestions={dynamicSuggestions}
               />
             </div>
           </>

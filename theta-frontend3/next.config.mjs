@@ -27,6 +27,15 @@ const nextConfig = {
   // 输出配置
   // Docker 部署需要 standalone 模式
   output: 'standalone',
+  async redirects() {
+    return [
+      { source: '/training', destination: '/dashboard', permanent: true },
+      { source: '/login', destination: '/', permanent: true },
+      { source: '/register', destination: '/', permanent: true },
+      { source: '/results', destination: '/dashboard', permanent: true },
+      { source: '/visualizations', destination: '/dashboard', permanent: true },
+    ]
+  },
 }
 
 export default nextConfig

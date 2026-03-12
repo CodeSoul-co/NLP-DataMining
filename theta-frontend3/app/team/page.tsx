@@ -79,7 +79,7 @@ const TEAM_MEMBERS: TeamMember[] = [
     highlights: ["COO", "战略执行", "商业落地"],
   },
   {
-    id: 3,
+    id: 8,
     name: "潘吉群",
     nameEn: "PAN JIQUN",
     role: "算法工程师",

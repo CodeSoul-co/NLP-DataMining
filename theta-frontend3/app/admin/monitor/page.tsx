@@ -459,7 +459,6 @@ export default function MonitorPage() {
               <h3 className="font-semibold mb-2">后端服务</h3>
               <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
                 <li>FastAPI 后端 - localhost:8000（langgraph_agent/backend）</li>
-                <li>DataClean - localhost:8001（ETM/dataclean，可选）</li>
               </ul>
             </div>
             <div>

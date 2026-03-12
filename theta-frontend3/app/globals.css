@@ -607,3 +607,32 @@
 .team-card-back {
   transform: rotateY(180deg);
 }
+
+/* 论文案例翻转卡片 */
+.paper-card-flip {
+  perspective: 1000px;
+}
+
+.paper-card-flip-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.7s ease-out;
+  transform-style: preserve-3d;
+}
+
+.paper-card-flip:hover .paper-card-flip-inner {
+  transform: rotateY(180deg);
+}
+
+.paper-card-front,
+.paper-card-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.paper-card-back {
+  transform: rotateY(180deg);
+}
