@@ -2,336 +2,336 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
     <url>
         <loc>https://codesoul-co.github.io/THETA/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/troubleshooting/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/troubleshooting/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/troubleshooting/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/advanced/chinese-data/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/chinese-data/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/chinese-data/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/advanced/custom-datasets/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/custom-datasets/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/custom-datasets/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/advanced/distributed-training/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/distributed-training/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/distributed-training/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/advanced/hyperparameters/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/hyperparameters/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/hyperparameters/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/api/prepare-data/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/api/prepare-data/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/api/prepare-data/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/api/run-pipeline/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/api/run-pipeline/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/api/run-pipeline/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/api/visualization/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/api/visualization/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/api/visualization/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/appendix/faq/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/appendix/faq/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/appendix/faq/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/examples/chinese-dataset/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/examples/chinese-dataset/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/examples/chinese-dataset/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/examples/english-dataset/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/examples/english-dataset/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/examples/english-dataset/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/examples/supervised-learning/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/examples/supervised-learning/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/examples/supervised-learning/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/getting-started/installation/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/getting-started/installation/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/getting-started/installation/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/getting-started/overview/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/getting-started/overview/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/getting-started/overview/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/getting-started/quickstart/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/getting-started/quickstart/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/getting-started/quickstart/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/models/baselines/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/models/baselines/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/models/baselines/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/models/comparison/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/models/comparison/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/models/comparison/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/models/theta/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/models/theta/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/models/theta/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/user-guide/data-preparation/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/data-preparation/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/data-preparation/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/user-guide/evaluation/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/evaluation/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/evaluation/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/user-guide/preprocessing/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/preprocessing/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/preprocessing/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/user-guide/training/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/training/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/training/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/user-guide/visualization/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/visualization/"/>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/visualization/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/troubleshooting/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/troubleshooting/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/troubleshooting/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/advanced/chinese-data/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/chinese-data/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/chinese-data/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/advanced/custom-datasets/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/custom-datasets/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/custom-datasets/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/advanced/distributed-training/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/distributed-training/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/distributed-training/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/advanced/hyperparameters/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/advanced/hyperparameters/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/advanced/hyperparameters/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/api/prepare-data/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/api/prepare-data/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/api/prepare-data/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/api/run-pipeline/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/api/run-pipeline/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/api/run-pipeline/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/api/visualization/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/api/visualization/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/api/visualization/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/appendix/faq/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/appendix/faq/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/appendix/faq/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/examples/chinese-dataset/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/examples/chinese-dataset/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/examples/chinese-dataset/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/examples/english-dataset/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/examples/english-dataset/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/examples/english-dataset/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/examples/supervised-learning/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/examples/supervised-learning/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/examples/supervised-learning/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/getting-started/installation/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/getting-started/installation/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/getting-started/installation/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/getting-started/overview/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/getting-started/overview/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/getting-started/overview/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/getting-started/quickstart/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/getting-started/quickstart/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/getting-started/quickstart/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/models/baselines/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/models/baselines/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/models/baselines/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/models/comparison/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/models/comparison/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/models/comparison/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/models/theta/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/models/theta/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/models/theta/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/user-guide/data-preparation/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/data-preparation/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/data-preparation/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/user-guide/evaluation/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/evaluation/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/evaluation/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/user-guide/preprocessing/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/preprocessing/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/preprocessing/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/user-guide/training/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/training/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/training/"/>
     </url>
     <url>
         <loc>https://codesoul-co.github.io/THETA/zh/user-guide/visualization/</loc>
-        <lastmod>2026-03-11</lastmod>
+        <lastmod>2026-03-13</lastmod>
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="zh" href="https://codesoul-co.github.io/THETA/zh/user-guide/visualization/"/>
         <xhtml:link rel="alternate" hreflang="en" href="https://codesoul-co.github.io/THETA/user-guide/visualization/"/>
