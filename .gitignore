@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.py[cod]
+*.class
+workspace/*
+!workspace/.gitkeep
+result/*
+!result/.gitkeep
+data/*
+!data/.gitkeep
+*.log
+.DS_Store
